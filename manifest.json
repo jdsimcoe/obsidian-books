@@ -1,0 +1,9 @@
+{
+  "id": "obsidian-books",
+  "name": "Books",
+  "version": "0.1.0",
+  "minAppVersion": "1.5.0",
+  "description": "Write, organize, and assemble long-form books from Markdown files.",
+  "author": "jdsimcoe",
+  "isDesktopOnly": false
+}

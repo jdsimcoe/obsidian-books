@@ -1,0 +1,446 @@
+.obsidian-books-view,
+.obsidian-books-sidebar {
+  --books-serif: ui-serif, "New York", Georgia, serif;
+  box-sizing: border-box;
+  height: 100%;
+  overflow: auto;
+  padding: 22px;
+}
+
+.obsidian-books-view *,
+.obsidian-books-sidebar * {
+  box-sizing: border-box;
+}
+
+.obsidian-books-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.obsidian-books-header h1 {
+  margin: 0;
+  font-family: var(--books-serif);
+  font-size: 32px;
+  line-height: 1.1;
+  letter-spacing: 0;
+}
+
+.obsidian-books-subtitle,
+.obsidian-books-breadcrumb,
+.obsidian-books-card-meta,
+.obsidian-books-card-footer,
+.obsidian-books-section-kicker,
+.obsidian-books-section-file,
+.obsidian-books-research-path,
+.obsidian-books-sidebar-section-title,
+.obsidian-books-sidebar-empty {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.obsidian-books-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.obsidian-books-search {
+  min-width: 180px;
+}
+
+.obsidian-books-primary-button,
+.obsidian-books-secondary-button,
+.obsidian-books-link-button {
+  white-space: nowrap;
+}
+
+.obsidian-books-secondary-button {
+  border: 1px solid var(--background-modifier-border);
+  background: var(--background-primary);
+  color: var(--text-normal);
+}
+
+.obsidian-books-link-button {
+  border: none;
+  background: transparent;
+  color: var(--text-accent);
+  padding: 0;
+  box-shadow: none;
+}
+
+.obsidian-books-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.obsidian-books-library-results {
+  display: grid;
+  gap: 12px;
+}
+
+.obsidian-books-library-results.is-grid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+
+.obsidian-books-library-results.is-list {
+  grid-template-columns: 1fr;
+}
+
+.obsidian-books-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 160px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  padding: 14px;
+  cursor: pointer;
+}
+
+.obsidian-books-card:hover,
+.obsidian-books-card:focus-visible,
+.obsidian-books-section-row:hover {
+  border-color: var(--background-modifier-border-hover);
+  background: var(--background-modifier-hover);
+}
+
+.obsidian-books-card h2 {
+  margin: 0;
+  font-family: var(--books-serif);
+  font-size: 21px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.obsidian-books-card p {
+  flex: 1 1 auto;
+  margin: 0;
+  color: var(--text-normal);
+  line-height: 1.45;
+}
+
+.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-library-view {
+  padding: 10px 12px;
+}
+
+.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-header {
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-header h1 {
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-large);
+  line-height: 1.25;
+}
+
+.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-subtitle {
+  display: none;
+}
+
+.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-header-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  width: 100%;
+}
+
+.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-search {
+  min-width: 0;
+  width: 100%;
+}
+
+.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-primary-button {
+  min-width: 0;
+  padding-inline: 10px;
+}
+
+.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-library-results,
+.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-library-results.is-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-card {
+  gap: 6px;
+  min-height: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  padding: 8px;
+}
+
+.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-card h2 {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-medium);
+  line-height: 1.25;
+}
+
+.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-card p {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-card-meta {
+  justify-content: flex-start;
+}
+
+.obsidian-books-card-meta,
+.obsidian-books-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.obsidian-books-empty {
+  max-width: 480px;
+  padding: 26px 0;
+}
+
+.obsidian-books-empty h2 {
+  margin: 0 0 8px;
+  font-size: 18px;
+}
+
+.obsidian-books-empty p {
+  margin: 0 0 14px;
+  color: var(--text-muted);
+}
+
+.obsidian-books-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.obsidian-books-section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.obsidian-books-section-row {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  padding: 10px;
+}
+
+.obsidian-books-section-row.is-dragging {
+  opacity: 0.6;
+}
+
+.obsidian-books-drag-handle {
+  color: var(--text-faint);
+  cursor: grab;
+}
+
+.obsidian-books-section-body {
+  min-width: 0;
+  cursor: pointer;
+}
+
+.obsidian-books-section-body h2 {
+  margin: 2px 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--books-serif);
+  font-size: 18px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.obsidian-books-section-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-monospace);
+}
+
+.obsidian-books-section-actions,
+.obsidian-books-research-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.obsidian-books-sidebar {
+  padding: 12px;
+}
+
+.obsidian-books-sidebar-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.obsidian-books-sidebar-header h2 {
+  margin: 0;
+  font-size: var(--font-ui-large);
+}
+
+.obsidian-books-sidebar-results {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.obsidian-books-sidebar-section-title {
+  margin: 4px 0;
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+}
+
+.obsidian-books-research-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: start;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.obsidian-books-research-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.obsidian-books-research-icon {
+  color: var(--text-muted);
+  padding-top: 2px;
+}
+
+.obsidian-books-research-body {
+  min-width: 0;
+}
+
+.obsidian-books-research-title {
+  display: -webkit-box;
+  overflow: hidden;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.obsidian-books-research-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.obsidian-books-manuscript-file .markdown-source-view,
+.obsidian-books-manuscript-file .markdown-preview-view,
+.obsidian-books-manuscript-file .cm-content,
+.obsidian-books-manuscript-file .markdown-preview-sizer {
+  font-family: ui-serif, "New York", Georgia, serif;
+  letter-spacing: 0;
+}
+
+.obsidian-books-manuscript-file .inline-title.obsidian-books-readable-inline-title {
+  font-size: 0;
+  line-height: 1.2;
+}
+
+.obsidian-books-manuscript-file .inline-title.obsidian-books-readable-inline-title::before {
+  content: attr(data-obsidian-books-title);
+  color: var(--inline-title-color, var(--text-normal));
+  display: block;
+  font-family: var(--font-interface);
+  font-size: var(--inline-title-size, 2em);
+  font-weight: var(--inline-title-weight, var(--font-bold));
+  letter-spacing: 0;
+  line-height: var(--inline-title-line-height, 1.2);
+}
+
+.obsidian-books-manuscript-file .markdown-preview-view,
+.obsidian-books-manuscript-file .cm-line {
+  font-size: 18px;
+  line-height: 1.65;
+}
+
+.obsidian-books-manuscript-file .markdown-preview-view h1,
+.obsidian-books-manuscript-file .markdown-preview-view h2,
+.obsidian-books-manuscript-file .cm-header {
+  font-family: ui-serif, "New York", Georgia, serif;
+  letter-spacing: 0;
+}
+
+.obsidian-books-manuscript-file .obsidian-mirror-block,
+.obsidian-books-manuscript-file .obsidian-mirror-live-preview-block {
+  border: none;
+  border-left: 2px solid var(--background-modifier-border);
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-muted);
+}
+
+.obsidian-books-manuscript-file .obsidian-mirror-toolbar {
+  border: none;
+  padding: 0 0 2px 0;
+}
+
+.obsidian-books-manuscript-file .obsidian-mirror-body {
+  padding: 0 0 0 12px;
+  font-size: 0.86em;
+  line-height: 1.45;
+}
+
+.obsidian-books-manuscript-file .obsidian-mirror-status {
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+}
+
+.obsidian-books-manuscript-file .obsidian-mirror-preview p {
+  margin: 0;
+}
+
+@media (max-width: 720px) {
+  .obsidian-books-view {
+    padding: 16px;
+  }
+
+  .obsidian-books-header {
+    flex-direction: column;
+  }
+
+  .obsidian-books-header-actions,
+  .obsidian-books-search {
+    width: 100%;
+  }
+
+  .obsidian-books-section-row {
+    grid-template-columns: 24px minmax(0, 1fr);
+  }
+
+  .obsidian-books-section-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+  }
+}
