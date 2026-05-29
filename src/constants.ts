@@ -1,8 +1,11 @@
 export const BOOKS_FOLDER = "Books";
-export const BOOK_SCHEMA_VERSION = 1;
+export const BOOK_SCHEMA_VERSION = 2;
 
 export const BOOKS_LIBRARY_VIEW_TYPE = "obsidian-books-library";
-export const BOOK_TOC_VIEW_TYPE = "obsidian-books-toc";
+export const BOOK_SPINE_VIEW_TYPE = "obsidian-books-spine";
 export const BOOKS_SIDEBAR_VIEW_TYPE = "obsidian-books-sidebar";
+export const BOOKS_SCRATCHPAD_VIEW_TYPE = "obsidian-books-scratchpad";
 
 export const BOOK_FILE_NAME = "book.json";
+export const SCRATCHPAD_FILE_NAME = "scratchpad.json";
+export const SCRATCHPAD_SCHEMA_VERSION = 1;

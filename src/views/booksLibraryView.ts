@@ -1,7 +1,8 @@
-import {ItemView, Notice, setIcon, type WorkspaceLeaf} from "obsidian";
+import {ItemView, Menu, Modal, Notice, SearchComponent, Setting, setIcon, type App, type WorkspaceLeaf} from "obsidian";
 import {BOOKS_LIBRARY_VIEW_TYPE} from "../constants";
 import type BooksPlugin from "../main";
 import type {BookRecord} from "../types";
+import {countChapters} from "../utils/tree";
 
 type LibraryMode = "grid" | "list";
 
@@ -9,6 +10,8 @@ export class BooksLibraryView extends ItemView {
 	private readonly plugin: BooksPlugin;
 	private mode: LibraryMode = "list";
 	private query = "";
+	private searchVisible = false;
+	private readonly wordCounts = new Map<string, number>();
 
 	constructor(leaf: WorkspaceLeaf, plugin: BooksPlugin) {
 		super(leaf);
@@ -35,55 +38,63 @@ export class BooksLibraryView extends ItemView {
 	}
 
 	async render(): Promise<void> {
+		// Recompute word counts on a full render (also fired when a chapter is
+		// modified, via the book store's vault listeners).
+		this.wordCounts.clear();
 		this.contentEl.empty();
 		this.contentEl.addClass("obsidian-books-view", "obsidian-books-library-view");
 
-		const headerEl = this.contentEl.createDiv({cls: "obsidian-books-header"});
-		const titleWrapEl = headerEl.createDiv();
-		titleWrapEl.createEl("h1", {text: "Books"});
-		titleWrapEl.createDiv({
-			cls: "obsidian-books-subtitle",
-			text: "Long-form manuscripts in your vault.",
+		const navEl = this.contentEl.createDiv({cls: "obsidian-books-nav-header"});
+		this.addNavButton(navEl, "New book", "plus", false, () => {
+			this.plugin.showCreateBookModal();
 		});
-
-		const actionsEl = headerEl.createDiv({cls: "obsidian-books-header-actions"});
-		const searchEl = actionsEl.createEl("input", {
-			cls: "obsidian-books-search",
-			attr: {
-				type: "search",
-				placeholder: "Search books",
-				"aria-label": "Search books",
-			},
-		});
-		searchEl.value = this.query;
-		searchEl.addEventListener("input", () => {
-			this.query = searchEl.value;
-			void this.renderBooks();
-		});
-
-		const modeButton = actionsEl.createEl("button", {
-			cls: "clickable-icon obsidian-books-icon-button",
-			attr: {
-				type: "button",
-				"aria-label": this.mode === "grid" ? "Show list" : "Show grid",
-				title: this.mode === "grid" ? "Show list" : "Show grid",
-			},
-		});
-		setIcon(modeButton, this.mode === "grid" ? "list" : "layout-grid");
-		modeButton.addEventListener("click", () => {
-			this.mode = this.mode === "grid" ? "list" : "grid";
+		this.addNavButton(navEl, "Search", "search", this.searchVisible, () => {
+			this.searchVisible = !this.searchVisible;
+			if (!this.searchVisible) {
+				this.query = "";
+			}
 			void this.render();
 		});
+		this.addNavButton(
+			navEl,
+			this.mode === "grid" ? "Show as list" : "Show as grid",
+			this.mode === "grid" ? "list" : "layout-grid",
+			false,
+			() => {
+				this.mode = this.mode === "grid" ? "list" : "grid";
+				void this.render();
+			},
+		);
 
-		const createButton = actionsEl.createEl("button", {
-			cls: "mod-cta obsidian-books-primary-button",
-			text: "New book",
-			attr: {type: "button"},
-		});
-		createButton.addEventListener("click", () => this.plugin.showCreateBookModal());
+		if (this.searchVisible) {
+			const search = new SearchComponent(this.contentEl);
+			search.setPlaceholder("Search...");
+			search.setValue(this.query);
+			search.onChange((value) => {
+				this.query = value;
+				void this.renderBooks();
+			});
+			search.inputEl.focus();
+		}
 
 		this.contentEl.createDiv({cls: "obsidian-books-library-results"});
 		await this.renderBooks();
+	}
+
+	private addNavButton(
+		containerEl: HTMLElement,
+		label: string,
+		icon: string,
+		active: boolean,
+		onClick: () => void,
+	): void {
+		const button = containerEl.createEl("button", {
+			cls: "clickable-icon obsidian-books-icon-button",
+			attr: {type: "button", "aria-label": label, title: label},
+		});
+		button.toggleClass("is-active", active);
+		setIcon(button, icon);
+		button.addEventListener("click", onClick);
 	}
 
 	private async renderBooks(): Promise<void> {
@@ -100,30 +111,33 @@ export class BooksLibraryView extends ItemView {
 
 		if (!filteredBooks.length) {
 			const emptyEl = resultsEl.createDiv({cls: "obsidian-books-empty"});
-			emptyEl.createEl("h2", {text: books.length ? "No matching books" : "No books yet"});
+			emptyEl.createEl("h2", {text: books.length ? "No matching books" : "No books found"});
 			emptyEl.createEl("p", {
 				text: books.length ? "Try a different search." : "Create your first book to start a manuscript folder.",
 			});
 			return;
 		}
 
+		await Promise.all(
+			filteredBooks
+				.filter((book) => !this.wordCounts.has(book.manifest.id))
+				.map(async (book) => {
+					this.wordCounts.set(book.manifest.id, await this.plugin.bookStore.countWords(book));
+				}),
+		);
+
 		for (const book of filteredBooks) {
-			this.renderBookCard(resultsEl, book);
+			if (this.mode === "list") {
+				this.renderBookRow(resultsEl, book);
+			} else {
+				this.renderBookCard(resultsEl, book);
+			}
 		}
 	}
 
 	private renderBookCard(containerEl: HTMLElement, book: BookRecord): void {
 		const cardEl = containerEl.createDiv({cls: "obsidian-books-card"});
-		cardEl.tabIndex = 0;
-		cardEl.addEventListener("click", () => {
-			void this.plugin.openBookToc(book.manifest.id);
-		});
-		cardEl.addEventListener("keydown", (evt) => {
-			if (evt.key === "Enter" || evt.key === " ") {
-				evt.preventDefault();
-				void this.plugin.openBookToc(book.manifest.id);
-			}
-		});
+		this.attachBookInteractions(cardEl, book);
 
 		const metaEl = cardEl.createDiv({cls: "obsidian-books-card-meta"});
 		metaEl.createSpan({text: book.manifest.genre || "Uncategorized"});
@@ -135,27 +149,136 @@ export class BooksLibraryView extends ItemView {
 		}
 
 		const footerEl = cardEl.createDiv({cls: "obsidian-books-card-footer"});
-		footerEl.createSpan({text: `${book.manifest.sections.length} section${book.manifest.sections.length === 1 ? "" : "s"}`});
+		footerEl.createSpan({
+			text: `${chapterLabel(book)} · ${wordLabel(this.wordCounts.get(book.manifest.id) ?? 0)}`,
+		});
+	}
 
-		const overviewButton = footerEl.createEl("button", {
-			cls: "clickable-icon obsidian-books-icon-button",
-			attr: {
-				type: "button",
-				"aria-label": "Open overview",
-				title: "Open overview",
-			},
+	private renderBookRow(containerEl: HTMLElement, book: BookRecord): void {
+		const rowEl = containerEl.createDiv({cls: "obsidian-books-book-row"});
+		this.attachBookInteractions(rowEl, book);
+
+		const bodyEl = rowEl.createDiv({cls: "obsidian-books-book-row-body"});
+		bodyEl.createDiv({cls: "obsidian-books-book-row-title", text: book.manifest.title});
+		const metaParts = [
+			chapterLabel(book),
+			wordLabel(this.wordCounts.get(book.manifest.id) ?? 0),
+		];
+		bodyEl.createDiv({cls: "obsidian-books-book-row-meta", text: metaParts.join(" · ")});
+	}
+
+	private attachBookInteractions(el: HTMLElement, book: BookRecord): void {
+		el.tabIndex = 0;
+		el.addEventListener("click", () => {
+			void this.plugin.openBookSpine(book.manifest.id);
 		});
-		setIcon(overviewButton, "file-text");
-		overviewButton.addEventListener("click", (evt) => {
-			evt.stopPropagation();
-			void (async () => {
-				try {
-					await this.plugin.bookStore.openOverview(book);
-				} catch (error) {
-					new Notice(error instanceof Error ? error.message : "Could not open overview.");
-				}
-			})();
+		el.addEventListener("keydown", (evt) => {
+			if (evt.key === "Enter" || evt.key === " ") {
+				evt.preventDefault();
+				void this.plugin.openBookSpine(book.manifest.id);
+			}
 		});
+		el.addEventListener("contextmenu", (evt) => {
+			evt.preventDefault();
+			this.showBookMenu(evt, book);
+		});
+	}
+
+	private showBookMenu(evt: MouseEvent, book: BookRecord): void {
+		const menu = new Menu();
+		menu.addItem((item) => {
+			item
+				.setTitle("Open")
+				.setIcon("book-open")
+				.onClick(() => {
+					void this.plugin.openBookSpine(book.manifest.id);
+				});
+		});
+		menu.addSeparator();
+		menu.addItem((item) => {
+			item
+				.setTitle("Delete book")
+				.setIcon("trash-2")
+				.setWarning(true)
+				.onClick(() => {
+					void this.confirmDeleteBook(book);
+				});
+		});
+		menu.showAtMouseEvent(evt);
+	}
+
+	private async confirmDeleteBook(book: BookRecord): Promise<void> {
+		const confirmed = await confirmDeleteBook(this.plugin.app, book.manifest.title);
+		if (!confirmed) {
+			return;
+		}
+
+		try {
+			await this.plugin.bookStore.deleteBook(book);
+			new Notice(`Deleted "${book.manifest.title}".`);
+		} catch (error) {
+			new Notice(error instanceof Error ? error.message : "Could not delete book.");
+		}
+	}
+}
+
+function chapterLabel(book: BookRecord): string {
+	const count = countChapters(book.manifest.nodes);
+	return `${count} chapter${count === 1 ? "" : "s"}`;
+}
+
+function wordLabel(count: number): string {
+	return `${count.toLocaleString()} word${count === 1 ? "" : "s"}`;
+}
+
+function confirmDeleteBook(app: App, bookTitle: string): Promise<boolean> {
+	return new Promise((resolve) => {
+		new DeleteBookModal(app, bookTitle, resolve).open();
+	});
+}
+
+class DeleteBookModal extends Modal {
+	private didChoose = false;
+	private readonly bookTitle: string;
+	private readonly onResolve: (confirmed: boolean) => void;
+
+	constructor(app: App, bookTitle: string, onResolve: (confirmed: boolean) => void) {
+		super(app);
+		this.bookTitle = bookTitle;
+		this.onResolve = onResolve;
+	}
+
+	onOpen(): void {
+		this.titleEl.setText("Delete book");
+		this.contentEl.empty();
+		this.contentEl.createEl("p", {
+			text: `Move "${this.bookTitle}" and all of its sections to trash? This deletes the entire book folder.`,
+		});
+
+		new Setting(this.contentEl)
+			.addButton((button) => {
+				button.setButtonText("Cancel").onClick(() => {
+					this.didChoose = true;
+					this.onResolve(false);
+					this.close();
+				});
+			})
+			.addButton((button) => {
+				button
+					.setButtonText("Delete book")
+					.setWarning()
+					.onClick(() => {
+						this.didChoose = true;
+						this.onResolve(true);
+						this.close();
+					});
+			});
+	}
+
+	onClose(): void {
+		if (!this.didChoose) {
+			this.onResolve(false);
+		}
 	}
 }
 

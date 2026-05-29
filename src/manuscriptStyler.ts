@@ -1,130 +1,98 @@
-import {Component, MarkdownView, type App} from "obsidian";
-import {BookStore} from "./bookStore";
+import {Component, MarkdownView, TFile, type App} from "obsidian";
+import {BOOKS_FOLDER} from "./constants";
+import type BooksPlugin from "./main";
 import {isBooksPath} from "./utils/paths";
 
 const MANUSCRIPT_CLASS = "obsidian-books-manuscript-file";
-const READABLE_TITLE_CLASS = "obsidian-books-readable-inline-title";
-
-interface ReadableManuscriptChrome {
-	bookTitle: string;
-	fileTitle: string;
-}
 
 export class ManuscriptStyler extends Component {
+	private readonly plugin: BooksPlugin;
 	private readonly app: App;
-	private readonly bookStore: BookStore;
-	private syncToken = 0;
 
-	constructor(app: App, bookStore: BookStore) {
+	constructor(plugin: BooksPlugin) {
 		super();
-		this.app = app;
-		this.bookStore = bookStore;
+		this.plugin = plugin;
+		this.app = plugin.app;
 	}
 
 	onload(): void {
-		const sync = () => {
-			void this.syncLeafClasses();
-		};
+		const sync = () => this.syncLeafClasses();
 		this.registerEvent(this.app.workspace.on("file-open", sync));
 		this.registerEvent(this.app.workspace.on("layout-change", sync));
-		this.registerEvent(this.app.metadataCache.on("changed", sync));
-		this.registerEvent(this.app.vault.on("modify", sync));
 		this.registerEvent(this.app.vault.on("rename", sync));
 		this.app.workspace.onLayoutReady(sync);
+		this.registerDomEvent(document, "click", (evt) => this.handleBreadcrumbClick(evt), {capture: true});
 	}
 
 	onunload(): void {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			if (leaf.view instanceof MarkdownView) {
 				leaf.view.containerEl.removeClass(MANUSCRIPT_CLASS);
-				this.clearReadableChrome(leaf.view);
 			}
 		}
 	}
 
-	private async syncLeafClasses(): Promise<void> {
-		const syncToken = this.syncToken + 1;
-		this.syncToken = syncToken;
+	private syncLeafClasses(): void {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			if (!(leaf.view instanceof MarkdownView)) {
 				continue;
 			}
 
-			const view = leaf.view;
 			const file = leaf.view.file;
-			if (!file || !isBooksPath(file.path)) {
-				view.containerEl.removeClass(MANUSCRIPT_CLASS);
-				this.clearReadableChrome(view);
-				continue;
-			}
-
-			const chrome = await this.getReadableChrome(file.path);
-			if (syncToken !== this.syncToken) {
-				return;
-			}
-
-			view.containerEl.addClass(MANUSCRIPT_CLASS);
-			this.applyReadableChrome(view, chrome);
-			window.requestAnimationFrame(() => this.applyReadableChrome(view, chrome));
-			window.setTimeout(() => this.applyReadableChrome(view, chrome), 100);
+			const isManuscript = Boolean(file && isBooksPath(file.path));
+			leaf.view.containerEl.toggleClass(MANUSCRIPT_CLASS, isManuscript);
 		}
 	}
 
-	private async getReadableChrome(path: string): Promise<ReadableManuscriptChrome> {
-		const book = await this.bookStore.getBookForPath(path);
-		const file = this.app.vault.getFileByPath(path);
-		const frontmatter = file ? this.app.metadataCache.getFileCache(file)?.frontmatter : null;
-		const fallbackTitle = file?.basename ?? path.split("/").pop()?.replace(/\.md$/u, "") ?? "Untitled";
-		if (!book) {
-			return {
-				bookTitle: String(frontmatter?.bookTitle ?? "Books"),
-				fileTitle: String(frontmatter?.title ?? frontmatter?.sectionTitle ?? fallbackTitle),
-			};
+	private handleBreadcrumbClick(evt: MouseEvent): void {
+		const target = evt.target;
+		if (!(target instanceof HTMLElement)) {
+			return;
 		}
 
-		if (path.endsWith(`/${book.manifest.overviewFile}`)) {
-			return {
-				bookTitle: book.manifest.title,
-				fileTitle: book.manifest.title,
-			};
+		const crumb = target.closest(".view-header-breadcrumb");
+		if (!(crumb instanceof HTMLElement)) {
+			return;
 		}
 
-		const relativePath = path.slice(book.folderPath.length + 1);
-		const section = book.manifest.sections.find((candidate) => candidate.file === relativePath);
-		return {
-			bookTitle: book.manifest.title,
-			fileTitle: section?.title
-				?? String(frontmatter?.title ?? frontmatter?.sectionTitle ?? fallbackTitle),
-		};
+		const view = this.findOwningManuscriptView(crumb);
+		const file = view?.file;
+		if (!file || !isBooksPath(file.path)) {
+			return;
+		}
+
+		const header = crumb.closest(".view-header") ?? view.containerEl;
+		const crumbs = Array.from(header.querySelectorAll(".view-header-breadcrumb"));
+		const index = crumbs.indexOf(crumb);
+
+		evt.preventDefault();
+		evt.stopImmediatePropagation();
+		void this.navigateBreadcrumb(file, index, crumbs.length);
 	}
 
-	private applyReadableChrome(view: MarkdownView, chrome: ReadableManuscriptChrome): void {
-		const inlineTitleEl = view.containerEl.querySelector(".inline-title");
-		if (inlineTitleEl instanceof HTMLElement) {
-			inlineTitleEl.addClass(READABLE_TITLE_CLASS);
-			inlineTitleEl.setAttr("data-obsidian-books-title", chrome.fileTitle);
-			inlineTitleEl.setAttr("aria-label", chrome.fileTitle);
-		}
-
-		const breadcrumbs = Array.from(view.containerEl.querySelectorAll(".view-header-breadcrumb"))
-			.filter((breadcrumb): breadcrumb is HTMLElement => breadcrumb instanceof HTMLElement);
-		const labels = breadcrumbs.length > 2
-			? ["Books", chrome.bookTitle, chrome.fileTitle]
-			: [chrome.bookTitle, chrome.fileTitle];
-		breadcrumbs.forEach((breadcrumb, index) => {
-			const label = labels[index];
-			if (label) {
-				breadcrumb.setText(label);
+	private findOwningManuscriptView(el: HTMLElement): MarkdownView | null {
+		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+			if (leaf.view instanceof MarkdownView && leaf.view.containerEl.contains(el)) {
+				return leaf.view;
 			}
-		});
+		}
+
+		return null;
 	}
 
-	private clearReadableChrome(view: MarkdownView): void {
-		const inlineTitleEl = view.containerEl.querySelector(`.${READABLE_TITLE_CLASS}`);
-		if (inlineTitleEl instanceof HTMLElement) {
-			inlineTitleEl.removeClass(READABLE_TITLE_CLASS);
-			inlineTitleEl.removeAttribute("data-obsidian-books-title");
-			inlineTitleEl.removeAttribute("aria-label");
+	private async navigateBreadcrumb(file: TFile, index: number, crumbCount: number): Promise<void> {
+		const folderParts = file.path.split("/").slice(0, -1);
+		const isFileCrumb = crumbCount > folderParts.length && index >= folderParts.length;
+		const crumbPath = isFileCrumb ? file.path : folderParts.slice(0, index + 1).join("/");
+
+		if (crumbPath === BOOKS_FOLDER) {
+			await this.plugin.openBooksLibrary();
+			return;
+		}
+
+		const book = await this.plugin.bookStore.getBookForPath(file.path);
+		if (book) {
+			await this.plugin.openBookSpine(book.manifest.id);
 		}
 	}
 }

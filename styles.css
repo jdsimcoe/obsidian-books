@@ -32,8 +32,6 @@
 .obsidian-books-breadcrumb,
 .obsidian-books-card-meta,
 .obsidian-books-card-footer,
-.obsidian-books-section-kicker,
-.obsidian-books-section-file,
 .obsidian-books-research-path,
 .obsidian-books-sidebar-section-title,
 .obsidian-books-sidebar-empty {
@@ -107,15 +105,61 @@
 
 .obsidian-books-card:hover,
 .obsidian-books-card:focus-visible,
+.obsidian-books-book-row:hover,
+.obsidian-books-book-row:focus-visible,
 .obsidian-books-section-row:hover {
   border-color: var(--background-modifier-border-hover);
   background: var(--background-modifier-hover);
 }
 
+.obsidian-books-book-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.obsidian-books-book-row-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.obsidian-books-book-row-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--books-serif);
+  font-size: 16px;
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+.obsidian-books-book-row-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.obsidian-books-book-row-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .obsidian-books-card h2 {
   margin: 0;
-  font-family: var(--books-serif);
-  font-size: 21px;
+  /* Match the list view's title treatment (non-bold serif). !important beats
+     Obsidian's global heading rule; font-size is left alone to keep the card
+     title at its current larger size. */
+  font-family: var(--books-serif) !important;
+  font-weight: normal !important;
   line-height: 1.2;
   letter-spacing: 0;
 }
@@ -127,59 +171,59 @@
   line-height: 1.45;
 }
 
-.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-library-view {
+.workspace-leaf-content[data-type="obsidian-books-library"]
+  .obsidian-books-library-view {
   padding: 10px 12px;
 }
 
-.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-header {
-  flex-direction: column;
-  gap: 10px;
-  margin-bottom: 12px;
+.obsidian-books-nav-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  margin-bottom: 8px;
 }
 
-.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-header h1 {
-  font-family: var(--font-interface);
-  font-size: var(--font-ui-large);
-  line-height: 1.25;
+.obsidian-books-nav-header .clickable-icon.is-active {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
 }
 
-.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-subtitle {
-  display: none;
-}
-
-.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-header-actions {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+.workspace-leaf-content[data-type="obsidian-books-library"]
+  .search-input-container {
   width: 100%;
+  margin-bottom: 8px;
 }
 
-.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-search {
-  min-width: 0;
-  width: 100%;
-}
-
-.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-primary-button {
-  min-width: 0;
-  padding-inline: 10px;
-}
-
-.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-library-results,
-.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-library-results.is-grid {
+.workspace-leaf-content[data-type="obsidian-books-library"]
+  .obsidian-books-library-results,
+.workspace-leaf-content[data-type="obsidian-books-library"]
+  .obsidian-books-library-results.is-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
-.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-card {
+.workspace-leaf-content[data-type="obsidian-books-library"]
+  .obsidian-books-library-results.is-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.workspace-leaf-content[data-type="obsidian-books-library"]
+  .obsidian-books-card {
   gap: 6px;
   min-height: 0;
-  border: none;
+  border: 1px solid var(--background-modifier-border);
   border-radius: 8px;
-  background: transparent;
-  padding: 8px;
+  background: var(--background-primary);
+  padding: 10px 12px;
 }
 
-.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-card h2 {
+.workspace-leaf-content[data-type="obsidian-books-library"]
+  .obsidian-books-card
+  h2 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -188,7 +232,9 @@
   line-height: 1.25;
 }
 
-.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-card p {
+.workspace-leaf-content[data-type="obsidian-books-library"]
+  .obsidian-books-card
+  p {
   display: -webkit-box;
   overflow: hidden;
   color: var(--text-muted);
@@ -198,7 +244,8 @@
   -webkit-line-clamp: 2;
 }
 
-.workspace-leaf-content[data-type="obsidian-books-library"] .obsidian-books-card-meta {
+.workspace-leaf-content[data-type="obsidian-books-library"]
+  .obsidian-books-card-meta {
   justify-content: flex-start;
 }
 
@@ -210,19 +257,73 @@
   gap: 8px;
 }
 
+.obsidian-books-cover-main {
+  min-width: 0;
+}
+
+.obsidian-books-cover-description {
+  margin: 8px 0 0;
+  max-width: 60ch;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
 .obsidian-books-empty {
   max-width: 480px;
   padding: 26px 0;
 }
 
 .obsidian-books-empty h2 {
-  margin: 0 0 8px;
-  font-size: 18px;
+  margin: 0 0 4px;
+  font-size: var(--font-ui-small) !important;
+  color: var(--text-muted) !important;
 }
 
 .obsidian-books-empty p {
-  margin: 0 0 14px;
+  margin: 0;
+  font-size: var(--font-ui-small);
   color: var(--text-muted);
+}
+
+.obsidian-books-spine-missing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--background-secondary);
+}
+
+.obsidian-books-blank-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+}
+
+.obsidian-books-blank-state-icon {
+  color: var(--text-faint);
+}
+
+.obsidian-books-blank-state-icon .svg-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.obsidian-books-blank-state-text {
+  font-size: var(--font-ui-small);
+}
+
+.obsidian-books-spine-empty {
+  padding: 56px 0;
+}
+
+.obsidian-books-blank-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 2px;
 }
 
 .obsidian-books-breadcrumb {
@@ -235,50 +336,213 @@
 .obsidian-books-section-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--size-4-4);
+}
+
+.obsidian-books-entry {
+  display: grid;
+  grid-template-columns: var(--size-4-4) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--size-4-1);
+}
+
+.obsidian-books-section-list > .obsidian-books-entry {
+  padding-left: calc(var(--size-4-2) + 1px);
+  padding-right: calc(var(--size-4-2) + 1px);
+}
+
+.obsidian-books-entry-number {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .obsidian-books-section-row {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: var(--size-4-1);
   border: 1px solid var(--background-modifier-border);
-  border-radius: 8px;
+  border-radius: var(--radius-s);
   background: var(--background-primary);
-  padding: 10px;
+  padding: var(--size-2-2) var(--size-4-2);
 }
 
 .obsidian-books-section-row.is-dragging {
   opacity: 0.6;
 }
 
+.obsidian-books-section-row.is-drop-target,
+.obsidian-books-part-header.is-drop-target {
+  border-color: var(--interactive-accent);
+  box-shadow: inset 0 2px 0 0 var(--interactive-accent);
+}
+
 .obsidian-books-drag-handle {
+  display: flex;
+  align-items: center;
   color: var(--text-faint);
   cursor: grab;
+  --icon-size: var(--icon-s);
+}
+
+.obsidian-books-part {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  overflow: hidden;
+}
+
+.obsidian-books-part.is-collapsed {
+  background: var(--background-primary);
+}
+
+.obsidian-books-part-header {
+  display: grid;
+  grid-template-columns: var(--size-4-4) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--size-4-1);
+  padding: var(--size-4-2);
+  cursor: grab;
+}
+
+.obsidian-books-part-header.is-dragging {
+  opacity: 0.6;
+}
+
+.obsidian-books-part-header-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--size-4-1);
+  padding-left: calc(var(--size-4-2) + 1px);
+  padding-right: calc(var(--size-4-2) + 1px);
+}
+
+.obsidian-books-part-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  --icon-size: var(--icon-s);
+}
+
+.obsidian-books-part-body {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
+.obsidian-books-part-body h2 {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 16px !important;
+  line-height: 1.25 !important;
+  letter-spacing: 0 !important;
+}
+
+.obsidian-books-part-count {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+}
+
+.obsidian-books-part-children {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  padding: 0 var(--size-4-2) var(--size-4-2);
+}
+
+.obsidian-books-part-empty {
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: var(--size-4-3);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.obsidian-books-part-empty.is-drop-target {
+  border-color: var(--interactive-accent);
+  color: var(--text-normal);
+}
+
+.obsidian-books-drop-tail {
+  min-height: var(--size-4-3);
+  border-radius: var(--radius-s);
+}
+
+/* Head: no idle footprint (a negative margin cancels the list gap); it only
+   becomes a hoverable strip while a drag is in progress. */
+.obsidian-books-drop-head {
+  min-height: 0;
+  margin-bottom: calc(-1 * var(--size-4-4));
+  border-radius: var(--radius-s);
+}
+
+.obsidian-books-view.is-dragging .obsidian-books-drop-head {
+  min-height: var(--size-4-4);
+}
+
+.obsidian-books-drop-head.is-drop-target,
+.obsidian-books-drop-tail.is-drop-target {
+  min-height: var(--size-4-6);
+  border: 1px dashed var(--interactive-accent);
+}
+
+.obsidian-books-drop-head.is-drop-target {
+  margin-bottom: 0;
 }
 
 .obsidian-books-section-body {
   min-width: 0;
   cursor: pointer;
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-4-2);
 }
 
 .obsidian-books-section-body h2 {
-  margin: 2px 0;
+  margin: 0;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--books-serif);
-  font-size: 18px;
-  line-height: 1.2;
-  letter-spacing: 0;
+  font-family: var(--books-serif) !important;
+  font-size: 16px !important;
+  font-weight: normal !important;
+  line-height: 1.3 !important;
+  letter-spacing: 0 !important;
 }
 
-.obsidian-books-section-file {
-  overflow: hidden;
-  text-overflow: ellipsis;
+.obsidian-books-entry-count {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
   white-space: nowrap;
-  font-family: var(--font-monospace);
+}
+
+/* "CANVAS" type chip. Type treatment mirrors Obsidian's .nav-file-tag (the
+   file-drawer type label) exactly; kept on a subtle chip background. */
+.obsidian-books-format-chip {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-s);
+  background: var(--color-base-25);
+  color: var(--color-base-60);
+  font-size: 9px;
+  font-weight: var(--font-semibold);
+  letter-spacing: 0.05em;
+  line-height: var(--line-height-normal);
+  text-transform: uppercase;
 }
 
 .obsidian-books-section-actions,
@@ -354,6 +618,122 @@
   white-space: nowrap;
 }
 
+/* Scratchpad sidebar */
+.obsidian-books-scratchpad {
+  padding: 8px;
+}
+
+.obsidian-books-scratchpad-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.obsidian-books-scratchpad-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--books-serif);
+  font-size: var(--font-ui-medium);
+}
+
+.obsidian-books-scratchpad-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.obsidian-books-scratchpad .obsidian-books-search {
+  width: 100%;
+  margin-bottom: 8px;
+}
+
+.obsidian-books-scratchpad-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.obsidian-books-scratch-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  padding: 8px;
+  cursor: grab;
+}
+
+.obsidian-books-scratch-row:hover {
+  border-color: var(--background-modifier-border-hover);
+  background: var(--background-modifier-hover);
+}
+
+.obsidian-books-scratch-text {
+  display: -webkit-box;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.obsidian-books-scratch-actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.obsidian-books-scratch-input {
+  width: 100%;
+}
+
+.obsidian-books-scratch-save-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.obsidian-books-scratch-save-quote {
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 240px;
+  overflow: auto;
+  margin: 16px 0;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--background-modifier-border);
+  color: var(--text-normal);
+  line-height: 1.5;
+}
+
+.obsidian-books-modal .setting-item-control {
+  flex: 0 0 280px;
+  justify-content: stretch;
+}
+
+.obsidian-books-modal .setting-item-control > input[type="text"],
+.obsidian-books-modal .setting-item-control > textarea,
+.obsidian-books-modal .setting-item-control > select,
+.obsidian-books-modal .setting-item-control > .dropdown {
+  width: 100%;
+  max-width: 100%;
+}
+
+.obsidian-books-modal .setting-item:last-child .setting-item-control {
+  flex: 0 0 auto;
+}
+
 .obsidian-books-manuscript-file .markdown-source-view,
 .obsidian-books-manuscript-file .markdown-preview-view,
 .obsidian-books-manuscript-file .cm-content,
@@ -362,20 +742,9 @@
   letter-spacing: 0;
 }
 
-.obsidian-books-manuscript-file .inline-title.obsidian-books-readable-inline-title {
-  font-size: 0;
-  line-height: 1.2;
-}
-
-.obsidian-books-manuscript-file .inline-title.obsidian-books-readable-inline-title::before {
-  content: attr(data-obsidian-books-title);
-  color: var(--inline-title-color, var(--text-normal));
-  display: block;
-  font-family: var(--font-interface);
-  font-size: var(--inline-title-size, 2em);
-  font-weight: var(--inline-title-weight, var(--font-bold));
+.obsidian-books-manuscript-file .inline-title {
+  font-family: ui-serif, "New York", Georgia, serif;
   letter-spacing: 0;
-  line-height: var(--inline-title-line-height, 1.2);
 }
 
 .obsidian-books-manuscript-file .markdown-preview-view,
@@ -389,6 +758,125 @@
 .obsidian-books-manuscript-file .cm-header {
   font-family: ui-serif, "New York", Georgia, serif;
   letter-spacing: 0;
+}
+
+/* Section breaks: extra air above each section heading. */
+.obsidian-books-manuscript-file .markdown-preview-view h2,
+.obsidian-books-manuscript-file .markdown-preview-view h3,
+.obsidian-books-manuscript-file .markdown-preview-view h4,
+.obsidian-books-manuscript-file .markdown-preview-view h5,
+.obsidian-books-manuscript-file .markdown-preview-view h6 {
+  margin-top: 2.2em;
+}
+
+.obsidian-books-manuscript-file .cm-line.HyperMD-header-2,
+.obsidian-books-manuscript-file .cm-line.HyperMD-header-3,
+.obsidian-books-manuscript-file .cm-line.HyperMD-header-4,
+.obsidian-books-manuscript-file .cm-line.HyperMD-header-5,
+.obsidian-books-manuscript-file .cm-line.HyperMD-header-6 {
+  margin-top: 1.8em;
+}
+
+/* Book paragraphs: first line of a continuing paragraph is indented; the
+   first paragraph of the chapter and the first after a heading stay flush.
+   text-indent only affects the first line, so wrapped lines return to the
+   margin as they should. */
+.obsidian-books-manuscript-file
+  .markdown-preview-view
+  p.obsidian-books-para-indent,
+.obsidian-books-manuscript-file .cm-line.obsidian-books-para-indent {
+  text-indent: 1.5em;
+}
+
+.obsidian-books-manuscript-file
+  .markdown-preview-view
+  p.obsidian-books-chapter-open {
+  text-indent: 0;
+}
+
+/* Paragraph-number badges in the right gutter (editing / Live Preview only).
+   Reserve a right-hand gutter on the editor content so the numbers sit in their
+   own column and never overflow/clip at the pane edge. */
+.obsidian-books-manuscript-file .cm-editor .cm-content {
+  padding-right: 3rem;
+}
+
+.obsidian-books-manuscript-file .cm-scroller {
+  overflow-x: clip;
+}
+
+.obsidian-books-manuscript-file .cm-line.obsidian-books-para-number {
+  position: relative;
+}
+
+.obsidian-books-manuscript-file .cm-line.obsidian-books-para-number::after {
+  content: attr(data-books-paragraph);
+  position: absolute;
+  top: 0;
+  left: 100%;
+  margin-left: 2.6rem;
+  /* The badge sits on indented continuation lines too; don't inherit their
+     text-indent (it would shove the digit sideways). */
+  text-indent: 0;
+  min-width: 1.5em;
+  padding: 0.15em 0.4em;
+  border-radius: var(--radius-s);
+  background: var(--background-secondary);
+  color: var(--text-faint);
+  font-family: var(--font-interface);
+  font-size: 0.62em;
+  line-height: 1.3;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Section openers lead with an all-small-caps first word (every letter rendered
+   as a small capital, including the first). On the chapter opener the drop-cap
+   first letter sits on top of this, so the rest of that word reads as small
+   caps too. */
+.obsidian-books-manuscript-file .obsidian-books-smallcaps {
+  font-variant-caps: all-small-caps;
+  letter-spacing: 0.02em;
+}
+
+/* Drop cap on the opening paragraph of the chapter. */
+.obsidian-books-manuscript-file
+  .markdown-preview-view
+  p.obsidian-books-chapter-open::first-letter,
+.obsidian-books-manuscript-file
+  .cm-line.obsidian-books-chapter-open::first-letter {
+  float: left;
+  font-family: ui-serif, "New York", Georgia, serif;
+  font-size: 3.1em;
+  line-height: 0.82;
+  font-weight: 400;
+  padding-left: 0.1em;
+  padding-right: 0.16em;
+  margin-top: 0.04em;
+}
+
+/* "TK" to-come notes: the TK marker plus the text to its right, wrapped in a
+   blue note container. */
+.obsidian-books-manuscript-file .obsidian-books-tk-note {
+  background: rgba(64, 120, 220, 0.12);
+  border-radius: var(--radius-s);
+  padding: 0.05em 0.35em;
+  /* Pull the highlight left into the trough so the text stays flush with the
+     body gutter while the blue bleeds into the left margin. */
+  margin-left: -0.35em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+
+.obsidian-books-manuscript-file .obsidian-books-tk {
+  color: var(--color-blue, #4571d4);
+  font-weight: 700;
+}
+
+.obsidian-books-manuscript-file .obsidian-books-tk-note .obsidian-books-tk {
+  margin-right: 0.15em;
 }
 
 .obsidian-books-manuscript-file .obsidian-mirror-block,
@@ -436,11 +924,16 @@
   }
 
   .obsidian-books-section-row {
-    grid-template-columns: 24px minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .obsidian-books-section-actions {
     grid-column: 2;
     justify-content: flex-start;
   }
+}
+
+.workspace-leaf-content[data-type="file-explorer"]
+  .nav-folder:has(> .nav-folder-title[data-path="Books"]) {
+  display: none;
 }

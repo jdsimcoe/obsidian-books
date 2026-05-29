@@ -1,20 +1,40 @@
-import {Component, normalizePath, TFile, TFolder, type App} from "obsidian";
-import {BOOK_FILE_NAME, BOOK_SCHEMA_VERSION, BOOKS_FOLDER} from "./constants";
+import {Component, normalizePath, TAbstractFile, TFile, TFolder, type App} from "obsidian";
+import {BOOK_FILE_NAME, BOOK_SCHEMA_VERSION, BOOKS_FOLDER, SCRATCHPAD_FILE_NAME, SCRATCHPAD_SCHEMA_VERSION} from "./constants";
 import type {
+	BookEntry,
 	BookManifest,
+	BookNode,
+	BookPart,
 	BookRecord,
-	BookSection,
 	BookSectionType,
 	CreateBookInput,
+	CreateCanvasInput,
+	CreatePartInput,
 	CreateSectionInput,
+	ScratchSnippet,
+	Scratchpad,
 } from "./types";
 import {serializeFrontmatter} from "./utils/frontmatter";
-import {createId, filePrefixFromSlug, nowIso, slugify} from "./utils/ids";
+import {createId, nowIso, sanitizeFileName} from "./utils/ids";
 import {ensureNestedFolder, uniquePath} from "./utils/paths";
+import {
+	cloneNodes,
+	findEntry,
+	findPart,
+	flattenEntries,
+	insertEntry,
+	isPart,
+	removeEntry,
+	type InsertTarget,
+} from "./utils/tree";
+
+const SECTION_TYPES: BookSectionType[] = ["intro", "chapter", "interlude", "appendix", "backmatter"];
+const EMPTY_CANVAS = "{\n\t\"nodes\": [],\n\t\"edges\": []\n}\n";
 
 export class BookStore extends Component {
 	private readonly app: App;
 	private listeners = new Set<() => void>();
+	private readonly suppressRenamePaths = new Set<string>();
 
 	constructor(app: App) {
 		super();
@@ -25,8 +45,47 @@ export class BookStore extends Component {
 		const notify = () => this.notifyChanged();
 		this.registerEvent(this.app.vault.on("create", notify));
 		this.registerEvent(this.app.vault.on("modify", notify));
-		this.registerEvent(this.app.vault.on("rename", notify));
 		this.registerEvent(this.app.vault.on("delete", notify));
+		this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+			void this.handleRename(file, oldPath);
+		}));
+	}
+
+	private async handleRename(file: TAbstractFile, oldPath: string): Promise<void> {
+		this.notifyChanged();
+		if (!(file instanceof TFile)) {
+			return;
+		}
+
+		if (this.suppressRenamePaths.delete(oldPath)) {
+			return;
+		}
+
+		const book = await this.getBookForPath(oldPath);
+		if (!book || file.path.slice(0, book.folderPath.length + 1) !== `${book.folderPath}/`) {
+			return;
+		}
+
+		const oldRelative = oldPath.slice(book.folderPath.length + 1);
+		const newRelative = file.path.slice(book.folderPath.length + 1);
+		if (oldRelative === newRelative) {
+			return;
+		}
+
+		const match = flattenEntries(book.manifest.nodes).find((entry) => entry.file === oldRelative);
+		if (!match) {
+			return;
+		}
+
+		const nodes = cloneNodes(book.manifest.nodes);
+		const location = findEntry(nodes, match.id);
+		if (location) {
+			location.entry.file = newRelative;
+			location.entry.title = file.basename;
+			location.entry.updatedAt = nowIso();
+		}
+		const updated = await this.updateBookManifest(book, {nodes});
+		await this.refreshEntryFrontmatter(updated);
 	}
 
 	onChange(listener: () => void): () => void {
@@ -69,6 +128,19 @@ export class BookStore extends Component {
 		});
 	}
 
+	async listGenres(): Promise<string[]> {
+		const books = await this.listBooks();
+		const genres = new Set<string>();
+		for (const book of books) {
+			const genre = book.manifest.genre.trim();
+			if (genre) {
+				genres.add(genre);
+			}
+		}
+
+		return Array.from(genres).sort((left, right) => left.localeCompare(right));
+	}
+
 	async getBook(bookId: string): Promise<BookRecord | null> {
 		const books = await this.listBooks();
 		return books.find((book) => book.manifest.id === bookId) ?? null;
@@ -109,12 +181,11 @@ export class BookStore extends Component {
 		}
 
 		await ensureNestedFolder(this.app, BOOKS_FOLDER);
-		const slug = await this.uniqueBookSlug(slugify(title, "book"));
+		const slug = await this.uniqueBookSlug(sanitizeFileName(title, "Book"));
 		const folderPath = normalizePath(`${BOOKS_FOLDER}/${slug}`);
 		await ensureNestedFolder(this.app, folderPath);
 
 		const timestamp = nowIso();
-		const overviewFile = `${slug}.md`;
 		const manifest: BookManifest = {
 			schemaVersion: BOOK_SCHEMA_VERSION,
 			id: createId("book"),
@@ -122,24 +193,52 @@ export class BookStore extends Component {
 			genre: input.genre.trim(),
 			description: input.description.trim(),
 			status: input.status.trim() || "Draft",
-			overviewFile,
-			sections: [],
+			nodes: [],
 			createdAt: timestamp,
 			updatedAt: timestamp,
 		};
 
-		const overviewPath = normalizePath(`${folderPath}/${overviewFile}`);
-		await this.app.vault.create(overviewPath, this.serializeOverview(manifest));
 		const manifestPath = normalizePath(`${folderPath}/${BOOK_FILE_NAME}`);
 		await this.writeManifest(manifestPath, manifest);
 		this.notifyChanged();
 		return {folderPath, manifestPath, slug, manifest};
 	}
 
-	async createSection(input: CreateSectionInput): Promise<{book: BookRecord; section: BookSection; file: TFile}> {
+	async updateBookDetails(book: BookRecord, input: CreateBookInput): Promise<BookRecord> {
 		const title = input.title.trim();
 		if (!title) {
-			throw new Error("Section title is required.");
+			throw new Error("Book title is required.");
+		}
+
+		const current = await this.getBook(book.manifest.id);
+		if (!current) {
+			throw new Error("Book not found.");
+		}
+
+		const updated = await this.updateBookManifest(current, {
+			title,
+			genre: input.genre.trim(),
+			description: input.description.trim(),
+			status: input.status.trim() || "Draft",
+		});
+		await this.refreshEntryFrontmatter(updated);
+		return updated;
+	}
+
+	async deleteBook(book: BookRecord): Promise<void> {
+		const folder = this.app.vault.getAbstractFileByPath(book.folderPath);
+		if (!(folder instanceof TFolder)) {
+			throw new Error("Book folder not found.");
+		}
+
+		await this.app.fileManager.trashFile(folder);
+		this.notifyChanged();
+	}
+
+	async createEntry(input: CreateSectionInput): Promise<{book: BookRecord; entry: BookEntry; file: TFile}> {
+		const title = input.title.trim();
+		if (!title) {
+			throw new Error("Chapter title is required.");
 		}
 
 		const book = await this.getBook(input.book.manifest.id);
@@ -148,101 +247,258 @@ export class BookStore extends Component {
 		}
 
 		const timestamp = nowIso();
-		const section: BookSection = {
-			id: createId("section"),
+		const entry: BookEntry = {
+			kind: "entry",
+			id: createId("entry"),
 			type: input.type,
 			title,
-			file: await this.uniqueSectionFile(book, input.type, title),
+			file: await this.uniqueSectionFile(book, title),
 			createdAt: timestamp,
 			updatedAt: timestamp,
 		};
 
-		const nextManifest: BookManifest = {
-			...book.manifest,
-			sections: [...book.manifest.sections, section],
-			updatedAt: timestamp,
-		};
-		const filePath = normalizePath(`${book.folderPath}/${section.file}`);
-		const sectionOrder = nextManifest.sections.length;
-		const markdown = this.serializeSection(nextManifest, section, sectionOrder);
+		const nodes = cloneNodes(book.manifest.nodes);
+		insertEntry(nodes, entry, {partId: input.partId ?? null});
+		const nextManifest: BookManifest = {...book.manifest, nodes, updatedAt: timestamp};
+
+		const filePath = normalizePath(`${book.folderPath}/${entry.file}`);
+		const order = flattenEntries(nodes).findIndex((candidate) => candidate.id === entry.id) + 1;
+		const markdown = this.serializeEntry(nextManifest, entry, order, this.partTitleForEntry(nodes, entry.id));
 		const created = await this.app.vault.create(filePath, markdown);
 		await this.writeManifest(book.manifestPath, nextManifest);
 		this.notifyChanged();
 		return {
 			book: {...book, manifest: nextManifest},
-			section,
+			entry,
 			file: created,
 		};
 	}
 
-	async reorderSection(book: BookRecord, fromIndex: number, toIndex: number): Promise<BookRecord> {
+	async createCanvas(input: CreateCanvasInput): Promise<{book: BookRecord; entry: BookEntry; file: TFile}> {
+		const title = input.title.trim() || "Canvas";
+		const book = await this.getBook(input.book.manifest.id);
+		if (!book) {
+			throw new Error("Book not found.");
+		}
+
+		const timestamp = nowIso();
+		const entry: BookEntry = {
+			kind: "entry",
+			id: createId("entry"),
+			type: "chapter",
+			title,
+			file: await this.uniqueCanvasFile(book, title),
+			format: "canvas",
+			createdAt: timestamp,
+			updatedAt: timestamp,
+		};
+
+		const nodes = cloneNodes(book.manifest.nodes);
+		if (input.partId) {
+			insertEntry(nodes, entry, {partId: input.partId});
+		} else if (input.atTop) {
+			nodes.unshift(entry);
+		} else {
+			insertEntry(nodes, entry, {partId: null});
+		}
+		const nextManifest: BookManifest = {...book.manifest, nodes, updatedAt: timestamp};
+
+		const filePath = normalizePath(`${book.folderPath}/${entry.file}`);
+		const created = await this.app.vault.create(filePath, EMPTY_CANVAS);
+		await this.writeManifest(book.manifestPath, nextManifest);
+		this.notifyChanged();
+		return {
+			book: {...book, manifest: nextManifest},
+			entry,
+			file: created,
+		};
+	}
+
+	async createPart(input: CreatePartInput): Promise<BookRecord> {
+		const title = input.title.trim() || "Untitled section";
+		const current = await this.getBook(input.book.manifest.id);
+		if (!current) {
+			throw new Error("Book not found.");
+		}
+
+		const timestamp = nowIso();
+		const part: BookPart = {
+			kind: "part",
+			id: createId("part"),
+			title,
+			children: [],
+			createdAt: timestamp,
+			updatedAt: timestamp,
+		};
+		const nodes = [...cloneNodes(current.manifest.nodes), part];
+		return this.updateBookManifest(current, {nodes});
+	}
+
+	async renameEntry(book: BookRecord, entryId: string, title: string): Promise<BookRecord> {
+		const trimmedTitle = title.trim();
+		if (!trimmedTitle) {
+			throw new Error("Chapter title is required.");
+		}
+
 		const current = await this.getBook(book.manifest.id);
 		if (!current) {
 			throw new Error("Book not found.");
 		}
 
-		const sections = current.manifest.sections.slice();
-		const [moved] = sections.splice(fromIndex, 1);
-		if (!moved) {
+		const location = findEntry(current.manifest.nodes, entryId);
+		if (!location) {
 			return current;
 		}
 
-		sections.splice(toIndex, 0, moved);
-		const updated = await this.updateBookManifest(current, {sections});
-		await this.refreshSectionFrontmatter(updated);
+		const newFile = await this.renameEntryFile(current, location.entry, trimmedTitle);
+		const nodes = cloneNodes(current.manifest.nodes);
+		const target = findEntry(nodes, entryId);
+		if (target) {
+			target.entry.title = trimmedTitle;
+			target.entry.file = newFile;
+			target.entry.updatedAt = nowIso();
+		}
+		const updated = await this.updateBookManifest(current, {nodes});
+		await this.refreshEntryFrontmatter(updated);
 		return updated;
 	}
 
-	async renameSection(book: BookRecord, sectionId: string, title: string): Promise<BookRecord> {
-		const trimmedTitle = title.trim();
-		if (!trimmedTitle) {
-			throw new Error("Section title is required.");
-		}
-
+	async renamePart(book: BookRecord, partId: string, title: string): Promise<BookRecord> {
+		const trimmedTitle = title.trim() || "Untitled section";
 		const current = await this.getBook(book.manifest.id);
 		if (!current) {
 			throw new Error("Book not found.");
 		}
 
-		const sections = current.manifest.sections.map((section) => {
-			if (section.id !== sectionId) {
-				return section;
-			}
+		const nodes = cloneNodes(current.manifest.nodes);
+		const part = findPart(nodes, partId);
+		if (!part) {
+			return current;
+		}
 
-			return {
-				...section,
-				title: trimmedTitle,
-				updatedAt: nowIso(),
-			};
-		});
-		const updated = await this.updateBookManifest(current, {sections});
-		await this.refreshSectionFrontmatter(updated);
+		part.title = trimmedTitle;
+		part.updatedAt = nowIso();
+		const updated = await this.updateBookManifest(current, {nodes});
+		await this.refreshEntryFrontmatter(updated);
 		return updated;
 	}
 
-	async removeSectionFromToc(book: BookRecord, sectionId: string, options?: {trashFile?: boolean}): Promise<BookRecord> {
+	private async renameEntryFile(book: BookRecord, entry: BookEntry, title: string): Promise<string> {
+		const oldPath = normalizePath(`${book.folderPath}/${entry.file}`);
+		const file = this.app.vault.getAbstractFileByPath(oldPath);
+		if (!(file instanceof TFile)) {
+			return entry.file;
+		}
+
+		const extension = entry.format === "canvas" ? "canvas" : "md";
+		const desired = `${sanitizeFileName(title)}.${extension}`;
+		if (desired === entry.file) {
+			return entry.file;
+		}
+
+		const newPath = await uniquePath(this.app, `${book.folderPath}/${desired}`);
+		this.suppressRenamePaths.add(oldPath);
+		await this.app.fileManager.renameFile(file, newPath);
+		return newPath.slice(book.folderPath.length + 1);
+	}
+
+	async removeEntryFromSpine(book: BookRecord, entryId: string, options?: {trashFile?: boolean}): Promise<BookRecord> {
 		const current = await this.getBook(book.manifest.id);
 		if (!current) {
 			throw new Error("Book not found.");
 		}
 
-		const removedSection = current.manifest.sections.find((section) => section.id === sectionId);
-		const sections = current.manifest.sections.filter((section) => section.id !== sectionId);
-		const updated = await this.updateBookManifest(current, {sections});
-		if (options?.trashFile && removedSection) {
-			const file = this.app.vault.getAbstractFileByPath(normalizePath(`${current.folderPath}/${removedSection.file}`));
+		const nodes = cloneNodes(current.manifest.nodes);
+		const removed = removeEntry(nodes, entryId);
+		const updated = await this.updateBookManifest(current, {nodes});
+		if (options?.trashFile && removed) {
+			const file = this.app.vault.getAbstractFileByPath(normalizePath(`${current.folderPath}/${removed.file}`));
 			if (file instanceof TFile) {
 				await this.app.fileManager.trashFile(file);
 			}
 		}
-		await this.refreshSectionFrontmatter(updated);
+		await this.refreshEntryFrontmatter(updated);
 		return updated;
 	}
 
-	async openSection(book: BookRecord, section: BookSection, options?: {newTab?: boolean}): Promise<void> {
-		const file = this.app.vault.getAbstractFileByPath(normalizePath(`${book.folderPath}/${section.file}`));
+	async removePart(book: BookRecord, partId: string): Promise<BookRecord> {
+		const current = await this.getBook(book.manifest.id);
+		if (!current) {
+			throw new Error("Book not found.");
+		}
+
+		const nodes = cloneNodes(current.manifest.nodes);
+		const index = nodes.findIndex((node) => node.kind === "part" && node.id === partId);
+		if (index === -1) {
+			return current;
+		}
+
+		const part = nodes[index] as BookPart;
+		nodes.splice(index, 1, ...part.children);
+		const updated = await this.updateBookManifest(current, {nodes});
+		await this.refreshEntryFrontmatter(updated);
+		return updated;
+	}
+
+	async moveEntry(book: BookRecord, entryId: string, target: InsertTarget): Promise<BookRecord> {
+		const current = await this.getBook(book.manifest.id);
+		if (!current) {
+			throw new Error("Book not found.");
+		}
+
+		const nodes = cloneNodes(current.manifest.nodes);
+		const removed = removeEntry(nodes, entryId);
+		if (!removed) {
+			return current;
+		}
+
+		insertEntry(nodes, removed, target);
+		const updated = await this.updateBookManifest(current, {nodes});
+		await this.refreshEntryFrontmatter(updated);
+		return updated;
+	}
+
+	async movePart(book: BookRecord, partId: string, beforeNodeId: string | null): Promise<BookRecord> {
+		const current = await this.getBook(book.manifest.id);
+		if (!current) {
+			throw new Error("Book not found.");
+		}
+
+		const nodes = cloneNodes(current.manifest.nodes);
+		const index = nodes.findIndex((node) => node.kind === "part" && node.id === partId);
+		if (index === -1) {
+			return current;
+		}
+
+		const [part] = nodes.splice(index, 1);
+		if (!part) {
+			return current;
+		}
+		let insertAt = nodes.length;
+		if (beforeNodeId) {
+			const target = nodes.findIndex((node) => node.id === beforeNodeId);
+			if (target !== -1) {
+				insertAt = target;
+			}
+		}
+		nodes.splice(insertAt, 0, part);
+		return this.updateBookManifest(current, {nodes});
+	}
+
+	async openEntry(book: BookRecord, entry: BookEntry, options?: {newTab?: boolean}): Promise<void> {
+		const file = this.app.vault.getAbstractFileByPath(normalizePath(`${book.folderPath}/${entry.file}`));
 		if (!(file instanceof TFile)) {
-			throw new Error("Section file not found.");
+			throw new Error("Chapter file not found.");
+		}
+
+		// If the chapter is already open in a tab, focus it instead of opening a
+		// duplicate. Match on serialized state so deferred (background) tabs match.
+		const existing = this.app.workspace
+			.getLeavesOfType("markdown")
+			.find((leaf) => (leaf.getViewState().state as {file?: string} | undefined)?.file === file.path);
+		if (existing) {
+			this.app.workspace.setActiveLeaf(existing, {focus: true});
+			return;
 		}
 
 		const leaf = options?.newTab ? this.app.workspace.getLeaf("tab") : this.getAuthoringLeaf();
@@ -252,13 +508,111 @@ export class BookStore extends Component {
 		}
 	}
 
-	async openOverview(book: BookRecord): Promise<void> {
-		const file = this.app.vault.getAbstractFileByPath(normalizePath(`${book.folderPath}/${book.manifest.overviewFile}`));
-		if (!(file instanceof TFile)) {
-			throw new Error("Book overview file not found.");
+	async countWords(book: BookRecord): Promise<number> {
+		const counts = await this.wordCountsByEntry(book);
+		let total = 0;
+		for (const count of counts.values()) {
+			total += count;
+		}
+		return total;
+	}
+
+	async listSnippets(book: BookRecord): Promise<ScratchSnippet[]> {
+		const path = this.scratchpadPath(book);
+		if (!await this.app.vault.adapter.exists(path)) {
+			return [];
+		}
+		try {
+			const parsed = JSON.parse(await this.app.vault.adapter.read(path)) as Partial<Scratchpad>;
+			if (!Array.isArray(parsed.snippets)) {
+				return [];
+			}
+			return parsed.snippets.filter(
+				(snippet): snippet is ScratchSnippet =>
+					typeof snippet?.id === "string" && typeof snippet?.text === "string",
+			);
+		} catch {
+			return [];
+		}
+	}
+
+	async addSnippet(book: BookRecord, text: string, sourceFile?: string): Promise<ScratchSnippet> {
+		const snippet: ScratchSnippet = {
+			id: createId("snip"),
+			text,
+			createdAt: nowIso(),
+			...(sourceFile ? {sourceFile} : {}),
+		};
+		const snippets = await this.listSnippets(book);
+		snippets.unshift(snippet);
+		await this.writeScratchpad(book, snippets);
+		return snippet;
+	}
+
+	async removeSnippet(book: BookRecord, id: string): Promise<void> {
+		const snippets = (await this.listSnippets(book)).filter((snippet) => snippet.id !== id);
+		await this.writeScratchpad(book, snippets);
+	}
+
+	private scratchpadPath(book: BookRecord): string {
+		return normalizePath(`${book.folderPath}/${SCRATCHPAD_FILE_NAME}`);
+	}
+
+	private async writeScratchpad(book: BookRecord, snippets: ScratchSnippet[]): Promise<void> {
+		const data: Scratchpad = {schemaVersion: SCRATCHPAD_SCHEMA_VERSION, snippets};
+		await this.app.vault.adapter.write(this.scratchpadPath(book), `${JSON.stringify(data, null, "\t")}\n`);
+		this.notifyChanged();
+	}
+
+	// Concatenate the whole book into one clean-manuscript Markdown string (spine
+	// order, frontmatter stripped, titled headings, page breaks between
+	// chapters). Canvases are skipped (not prose). Returns the text — the caller
+	// decides where to write it (e.g. an export outside the vault).
+	async compileBookMarkdown(book: BookRecord): Promise<string> {
+		const blocks: string[] = [];
+		const titleBlock = book.manifest.description
+			? `# ${book.manifest.title}\n\n${book.manifest.description}`
+			: `# ${book.manifest.title}`;
+		blocks.push(titleBlock);
+
+		for (const node of book.manifest.nodes) {
+			if (isPart(node)) {
+				blocks.push(`# ${node.title}`);
+				for (const child of node.children) {
+					if (child.format === "canvas") {
+						continue;
+					}
+					blocks.push(`## ${child.title}\n\n${await this.readChapterBody(book, child)}`);
+				}
+			} else if (node.format !== "canvas") {
+				blocks.push(`# ${node.title}\n\n${await this.readChapterBody(book, node)}`);
+			}
 		}
 
-		await this.getAuthoringLeaf().openFile(file);
+		const pageBreak = '\n\n<div style="page-break-after: always;"></div>\n\n';
+		return `${blocks.join(pageBreak)}\n`;
+	}
+
+	private async readChapterBody(book: BookRecord, entry: BookEntry): Promise<string> {
+		const file = this.app.vault.getAbstractFileByPath(normalizePath(`${book.folderPath}/${entry.file}`));
+		if (!(file instanceof TFile)) {
+			return "";
+		}
+		const raw = await this.app.vault.cachedRead(file);
+		return raw.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").trim();
+	}
+
+	async wordCountsByEntry(book: BookRecord): Promise<Map<string, number>> {
+		const counts = new Map<string, number>();
+		await Promise.all(flattenEntries(book.manifest.nodes).map(async (entry) => {
+			if (entry.format === "canvas") {
+				counts.set(entry.id, 0);
+				return;
+			}
+			const file = this.app.vault.getAbstractFileByPath(normalizePath(`${book.folderPath}/${entry.file}`));
+			counts.set(entry.id, file instanceof TFile ? countManuscriptWords(await this.app.vault.cachedRead(file)) : 0);
+		}));
+		return counts;
 	}
 
 	private getAuthoringLeaf() {
@@ -283,16 +637,21 @@ export class BookStore extends Component {
 		throw new Error("Could not create a unique book folder.");
 	}
 
-	private async uniqueSectionFile(book: BookRecord, type: BookSectionType, title: string): Promise<string> {
-		const bookPrefix = filePrefixFromSlug(book.slug);
-		const titleSlug = filePrefixFromSlug(slugify(title, type));
-		const path = await uniquePath(this.app, `${book.folderPath}/${bookPrefix}_${titleSlug}.md`);
+	private async uniqueSectionFile(book: BookRecord, title: string): Promise<string> {
+		const base = sanitizeFileName(title);
+		const path = await uniquePath(this.app, `${book.folderPath}/${base}.md`);
+		return path.slice(book.folderPath.length + 1);
+	}
+
+	private async uniqueCanvasFile(book: BookRecord, title: string): Promise<string> {
+		const base = sanitizeFileName(title);
+		const path = await uniquePath(this.app, `${book.folderPath}/${base}.canvas`);
 		return path.slice(book.folderPath.length + 1);
 	}
 
 	private async updateBookManifest(
 		book: BookRecord,
-		updates: Partial<Pick<BookManifest, "sections" | "title" | "genre" | "description" | "status">>,
+		updates: Partial<Pick<BookManifest, "nodes" | "title" | "genre" | "description" | "status">>,
 	): Promise<BookRecord> {
 		const manifest: BookManifest = {
 			...book.manifest,
@@ -305,60 +664,166 @@ export class BookStore extends Component {
 		return updated;
 	}
 
-	private async refreshSectionFrontmatter(book: BookRecord): Promise<void> {
-		await Promise.all(book.manifest.sections.map(async (section, index) => {
-			const file = this.app.vault.getAbstractFileByPath(normalizePath(`${book.folderPath}/${section.file}`));
+	private partTitleForEntry(nodes: BookNode[], entryId: string): string | null {
+		const location = findEntry(nodes, entryId);
+		return location?.part?.title ?? null;
+	}
+
+	private async refreshEntryFrontmatter(book: BookRecord): Promise<void> {
+		const entries = flattenEntries(book.manifest.nodes);
+		await Promise.all(entries.map(async (entry, index) => {
+			if (entry.format === "canvas") {
+				return; // canvas files have no frontmatter to mirror
+			}
+			const file = this.app.vault.getAbstractFileByPath(normalizePath(`${book.folderPath}/${entry.file}`));
 			if (!(file instanceof TFile)) {
 				return;
 			}
 
+			const partTitle = this.partTitleForEntry(book.manifest.nodes, entry.id);
 			await this.app.fileManager.processFrontMatter(file, (frontmatter) => {
 				const data = frontmatter as Record<string, unknown>;
-				data.title = section.title;
+				data.title = entry.title;
 				data.bookId = book.manifest.id;
 				data.bookTitle = book.manifest.title;
-				data.sectionId = section.id;
-				data.sectionType = section.type;
-				data.sectionTitle = section.title;
-				data.sectionOrder = index + 1;
+				if (partTitle) {
+					data.sectionTitle = partTitle;
+				} else {
+					delete data.sectionTitle;
+				}
+				data.chapterId = entry.id;
+				data.chapterType = entry.type;
+				data.chapterTitle = entry.title;
+				data.chapterOrder = index + 1;
 				data.genre = book.manifest.genre;
+				delete data.sectionId;
+				delete data.sectionType;
+				delete data.sectionOrder;
+				delete data.partTitle;
 			});
 		}));
 	}
 
 	private async readManifest(path: string): Promise<BookManifest> {
 		const raw = await this.app.vault.adapter.read(path);
-		const parsed = JSON.parse(raw) as BookManifest;
+		const parsed = JSON.parse(raw) as Record<string, unknown>;
 		return {
-			...parsed,
-			sections: Array.isArray(parsed.sections) ? parsed.sections : [],
+			schemaVersion: BOOK_SCHEMA_VERSION,
+			id: typeof parsed.id === "string" ? parsed.id : createId("book"),
+			title: typeof parsed.title === "string" ? parsed.title : "Untitled book",
+			genre: typeof parsed.genre === "string" ? parsed.genre : "",
+			description: typeof parsed.description === "string" ? parsed.description : "",
+			status: typeof parsed.status === "string" ? parsed.status : "Draft",
+			nodes: this.normalizeNodes(parsed),
+			createdAt: typeof parsed.createdAt === "string" ? parsed.createdAt : nowIso(),
+			updatedAt: typeof parsed.updatedAt === "string" ? parsed.updatedAt : nowIso(),
 		};
+	}
+
+	private normalizeNodes(parsed: Record<string, unknown>): BookNode[] {
+		if (Array.isArray(parsed.nodes)) {
+			return this.normalizeNodeList(parsed.nodes);
+		}
+		if (Array.isArray(parsed.sections)) {
+			return parsed.sections
+				.map((section) => this.normalizeEntry(section))
+				.filter((entry): entry is BookEntry => entry !== null);
+		}
+		return [];
+	}
+
+	private normalizeNodeList(list: unknown[]): BookNode[] {
+		const nodes: BookNode[] = [];
+		for (const raw of list) {
+			if (!raw || typeof raw !== "object") {
+				continue;
+			}
+
+			const record = raw as Record<string, unknown>;
+			if (record.kind === "part") {
+				const children = Array.isArray(record.children)
+					? record.children
+						.map((child) => this.normalizeEntry(child))
+						.filter((entry): entry is BookEntry => entry !== null)
+					: [];
+				nodes.push({
+					kind: "part",
+					id: typeof record.id === "string" ? record.id : createId("part"),
+					title: typeof record.title === "string" ? record.title : "Untitled section",
+					children,
+					createdAt: typeof record.createdAt === "string" ? record.createdAt : nowIso(),
+					updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : nowIso(),
+				});
+				continue;
+			}
+
+			const entry = this.normalizeEntry(record);
+			if (entry) {
+				nodes.push(entry);
+			}
+		}
+		return nodes;
+	}
+
+	private normalizeEntry(raw: unknown): BookEntry | null {
+		if (!raw || typeof raw !== "object") {
+			return null;
+		}
+
+		const record = raw as Record<string, unknown>;
+		if (typeof record.id !== "string" || typeof record.file !== "string") {
+			return null;
+		}
+
+		const timestamp = nowIso();
+		const isCanvas = record.format === "canvas" || record.file.endsWith(".canvas");
+		return {
+			kind: "entry",
+			id: record.id,
+			type: this.normalizeType(record.type),
+			title: typeof record.title === "string" ? record.title : record.file,
+			file: record.file,
+			format: isCanvas ? "canvas" : undefined,
+			createdAt: typeof record.createdAt === "string" ? record.createdAt : timestamp,
+			updatedAt: typeof record.updatedAt === "string" ? record.updatedAt : timestamp,
+		};
+	}
+
+	private normalizeType(value: unknown): BookSectionType {
+		return SECTION_TYPES.includes(value as BookSectionType) ? value as BookSectionType : "chapter";
 	}
 
 	private async writeManifest(path: string, manifest: BookManifest): Promise<void> {
 		await this.app.vault.adapter.write(path, `${JSON.stringify(manifest, null, "\t")}\n`);
 	}
 
-	private serializeOverview(manifest: BookManifest): string {
-		return `${serializeFrontmatter({
-			title: manifest.title,
+	private serializeEntry(manifest: BookManifest, entry: BookEntry, order: number, partTitle: string | null): string {
+		const frontmatter: Record<string, string | number | boolean> = {
+			title: entry.title,
 			bookId: manifest.id,
 			bookTitle: manifest.title,
-			genre: manifest.genre,
-			status: manifest.status,
-		})}${manifest.description ? `${manifest.description}\n` : ""}`;
+		};
+		if (partTitle) {
+			frontmatter.sectionTitle = partTitle;
+		}
+		frontmatter.chapterId = entry.id;
+		frontmatter.chapterType = entry.type;
+		frontmatter.chapterTitle = entry.title;
+		frontmatter.chapterOrder = order;
+		frontmatter.genre = manifest.genre;
+		return serializeFrontmatter(frontmatter);
 	}
+}
 
-	private serializeSection(manifest: BookManifest, section: BookSection, sectionOrder: number): string {
-		return `${serializeFrontmatter({
-			title: section.title,
-			bookId: manifest.id,
-			bookTitle: manifest.title,
-			sectionId: section.id,
-			sectionType: section.type,
-			sectionTitle: section.title,
-			sectionOrder,
-			genre: manifest.genre,
-		})}`;
-	}
+function countManuscriptWords(content: string): number {
+	let text = content;
+	text = text.replace(/^---\n[\s\S]*?\n---\n?/, ""); // frontmatter
+	text = text.replace(/```[\s\S]*?```/g, " "); // fenced code
+	text = text.replace(/`[^`]*`/g, " "); // inline code
+	text = text.replace(/!\[[^\]]*\]\([^)]*\)/g, " "); // images
+	text = text.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1"); // links -> text
+	text = text.replace(/\[\[(?:[^\]|]*\|)?([^\]]*)\]\]/g, "$1"); // wikilinks -> text
+	text = text.replace(/[#>*_~`]+/g, " "); // markdown markers
+	const words = text.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu);
+	return words ? words.length : 0;
 }

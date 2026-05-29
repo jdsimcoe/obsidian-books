@@ -1,16 +1,10 @@
-export function slugify(value: string, fallback = "untitled"): string {
-	const slug = value
-		.trim()
-		.toLowerCase()
-		.normalize("NFKD")
-		.replace(/[\u0300-\u036f]/gu, "")
-		.replace(/[^a-z0-9]+/gu, "-")
-		.replace(/^-+|-+$/gu, "");
-	return slug || fallback;
-}
-
-export function filePrefixFromSlug(slug: string): string {
-	return slug.replace(/-/gu, "_");
+export function sanitizeFileName(value: string, fallback = "Untitled"): string {
+	const cleaned = value
+		.replace(/[\\/:*?"<>|#^[\]]/gu, " ")
+		.replace(/\s+/gu, " ")
+		.replace(/^[.\s]+|[.\s]+$/gu, "")
+		.trim();
+	return cleaned || fallback;
 }
 
 export function createId(prefix: string): string {
