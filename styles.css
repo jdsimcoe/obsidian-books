@@ -155,11 +155,8 @@
 
 .obsidian-books-card h2 {
   margin: 0;
-  /* Match the list view's title treatment (non-bold serif). !important beats
-     Obsidian's global heading rule; font-size is left alone to keep the card
-     title at its current larger size. */
-  font-family: var(--books-serif) !important;
-  font-weight: normal !important;
+  font-family: var(--books-serif);
+  font-weight: normal;
   line-height: 1.2;
   letter-spacing: 0;
 }
@@ -275,8 +272,8 @@
 
 .obsidian-books-empty h2 {
   margin: 0 0 4px;
-  font-size: var(--font-ui-small) !important;
-  color: var(--text-muted) !important;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
 }
 
 .obsidian-books-empty p {
@@ -373,10 +370,14 @@
   opacity: 0.6;
 }
 
-.obsidian-books-section-row.is-drop-target,
-.obsidian-books-part-header.is-drop-target {
-  border-color: var(--interactive-accent);
+.obsidian-books-section-row.is-drop-before,
+.obsidian-books-part-header.is-drop-before {
   box-shadow: inset 0 2px 0 0 var(--interactive-accent);
+}
+
+.obsidian-books-section-row.is-drop-after,
+.obsidian-books-part-header.is-drop-after {
+  box-shadow: inset 0 -2px 0 0 var(--interactive-accent);
 }
 
 .obsidian-books-drag-handle {
@@ -442,9 +443,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 16px !important;
-  line-height: 1.25 !important;
-  letter-spacing: 0 !important;
+  font-size: 16px;
+  line-height: 1.25;
+  letter-spacing: 0;
 }
 
 .obsidian-books-part-count {
@@ -469,36 +470,21 @@
   text-align: center;
 }
 
-.obsidian-books-part-empty.is-drop-target {
+.obsidian-books-part-empty.is-drop-before,
+.obsidian-books-part-empty.is-drop-after {
   border-color: var(--interactive-accent);
   color: var(--text-normal);
 }
 
+/* Constant-height "drop at the end" zone below the last node. */
 .obsidian-books-drop-tail {
   min-height: var(--size-4-3);
   border-radius: var(--radius-s);
 }
 
-/* Head: no idle footprint (a negative margin cancels the list gap); it only
-   becomes a hoverable strip while a drag is in progress. */
-.obsidian-books-drop-head {
-  min-height: 0;
-  margin-bottom: calc(-1 * var(--size-4-4));
-  border-radius: var(--radius-s);
-}
-
-.obsidian-books-view.is-dragging .obsidian-books-drop-head {
-  min-height: var(--size-4-4);
-}
-
-.obsidian-books-drop-head.is-drop-target,
-.obsidian-books-drop-tail.is-drop-target {
-  min-height: var(--size-4-6);
-  border: 1px dashed var(--interactive-accent);
-}
-
-.obsidian-books-drop-head.is-drop-target {
-  margin-bottom: 0;
+.obsidian-books-drop-tail.is-drop-before,
+.obsidian-books-drop-tail.is-drop-after {
+  box-shadow: inset 0 2px 0 0 var(--interactive-accent);
 }
 
 .obsidian-books-section-body {
@@ -515,11 +501,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-family: var(--books-serif) !important;
-  font-size: 16px !important;
-  font-weight: normal !important;
-  line-height: 1.3 !important;
-  letter-spacing: 0 !important;
+  font-family: var(--books-serif);
+  font-size: 16px;
+  font-weight: normal;
+  line-height: 1.3;
+  letter-spacing: 0;
 }
 
 .obsidian-books-entry-count {
@@ -616,6 +602,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.obsidian-books-citation-suggestion {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.obsidian-books-citation-suggestion-title {
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  line-height: 1.35;
+}
+
+.obsidian-books-citation-suggestion-path {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.2;
 }
 
 /* Scratchpad sidebar */
@@ -794,6 +798,112 @@
   text-indent: 0;
 }
 
+/* Block quotations (Butterick, practicaltypography.com/block-quotations.html):
+   inset on BOTH sides — the left inset matches the paragraph indent, the right
+   inset matches it (paragraphs run full width on the right; quotes don't) — set
+   just 1px smaller (the unitless line-height tightens the leading with it), and
+   generously spaced from surrounding paragraphs. Obsidian's quote bar and tint
+   are removed via its own variables, which covers reading + Live Preview. */
+.obsidian-books-manuscript-file {
+  --blockquote-border-thickness: 0px;
+  --blockquote-border-color: transparent;
+  --blockquote-background-color: transparent;
+  /* One stop lighter than body text (still dark). Drives both the reading-view
+     blockquote and Live Preview's span.cm-quote, which read var(--blockquote-color). */
+  --blockquote-color: var(--text-muted);
+  --blockquote-font-style: normal;
+}
+
+/* Reading view: 1.5em side margins resolve against the 18px body, lining up with
+   the paragraph text-indent; the inner text shrinks. The text sits one notch
+   lighter than the surrounding prose, still dark. */
+.obsidian-books-manuscript-file .markdown-preview-view blockquote {
+  margin: 2.2em 1.5em;
+  padding: 0;
+  border: none;
+  background: transparent;
+  text-indent: 0;
+  color: var(--text-muted);
+}
+
+.obsidian-books-manuscript-file .markdown-preview-view blockquote p {
+  font-size: 0.944em;
+  font-style: normal;
+  color: inherit;
+}
+
+.obsidian-books-manuscript-file
+  .markdown-preview-view
+  blockquote
+  p.obsidian-books-para-indent {
+  text-indent: 0;
+}
+
+/* Live Preview / editing: 27px symmetric inset (matches the paragraph text-indent).
+   Obsidian recomputes its inline hanging text-indent when you leave a line, which
+   makes the first line jump — so the editor extension pins the inset directly on
+   quote lines. The inactive rendered marker footprint is collapsed so the quote
+   text stays aligned after editing. 17px == 1px down; vertical space only at the
+   block's outer edges. */
+.obsidian-books-manuscript-file .cm-line.HyperMD-quote {
+  margin-block: 2.2em;
+  padding-inline: 27px;
+  text-indent: 0;
+  font-size: 17px;
+  color: var(--text-muted);
+}
+
+/* The rendered quote marker is a CodeMirror replace-widget, and CM6 reserves its
+   measured width for layout — so display:none never reclaimed the space. Collapse
+   the widget's width to zero instead, so the first line stays flush with wraps. */
+.obsidian-books-manuscript-file .cm-line.HyperMD-quote .cm-blockquote-border {
+  display: inline-block;
+  width: 0;
+  min-width: 0;
+  max-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+}
+
+.obsidian-books-manuscript-file
+  .cm-line.HyperMD-quote.obsidian-books-quote-inactive {
+  padding-inline: 27px;
+  text-indent: 0;
+}
+
+.obsidian-books-manuscript-file
+  .cm-line.HyperMD-quote.obsidian-books-quote-inactive
+  .cm-blockquote-border,
+.obsidian-books-manuscript-file
+  .cm-line.HyperMD-quote.obsidian-books-quote-inactive
+  .cm-formatting-quote,
+.obsidian-books-manuscript-file
+  .cm-line.HyperMD-quote.obsidian-books-quote-inactive
+  .cm-widgetBuffer {
+  display: inline-block;
+  width: 0;
+  min-width: 0;
+  max-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  color: transparent;
+  font-size: 0;
+  line-height: 0;
+}
+
+.obsidian-books-manuscript-file .cm-line.HyperMD-quote + .cm-line.HyperMD-quote {
+  margin-top: 0;
+}
+
+.obsidian-books-manuscript-file
+  .cm-line.HyperMD-quote.obsidian-books-quote-has-next {
+  margin-bottom: 0;
+}
+
 /* Paragraph-number badges in the right gutter (editing / Live Preview only).
    Reserve a right-hand gutter on the editor content so the numbers sit in their
    own column and never overflow/clip at the pane edge. */
@@ -841,20 +951,28 @@
   letter-spacing: 0.02em;
 }
 
-/* Drop cap on the opening paragraph of the chapter. */
-.obsidian-books-manuscript-file
-  .markdown-preview-view
-  p.obsidian-books-chapter-open::first-letter,
-.obsidian-books-manuscript-file
-  .cm-line.obsidian-books-chapter-open::first-letter {
+/* Drop cap on the opening paragraph of the chapter: the first letter set in a
+   square tile with a subtle tinted background and small rounded corners. Sized in
+   em relative to its own (enlarged) font, so width === height stays square.
+   font-variant-caps is reset because the tile sits inside the small-caps opener. */
+.obsidian-books-manuscript-file .obsidian-books-dropcap {
   float: left;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 1.1em;
+  height: 1.1em;
+  margin: 0.05em 0.18em 0 0;
   font-family: ui-serif, "New York", Georgia, serif;
-  font-size: 3.1em;
-  line-height: 0.82;
+  font-size: 2.7em;
+  line-height: 1;
   font-weight: 400;
-  padding-left: 0.1em;
-  padding-right: 0.16em;
-  margin-top: 0.04em;
+  font-variant-caps: normal;
+  letter-spacing: normal;
+  color: var(--text-normal);
+  background: var(--background-secondary);
+  border-radius: var(--radius-s);
 }
 
 /* "TK" to-come notes: the TK marker plus the text to its right, wrapped in a
@@ -879,34 +997,68 @@
   margin-right: 0.15em;
 }
 
+.obsidian-books-manuscript-file .obsidian-books-footnote-ref {
+  font-family: ui-serif, "New York", Georgia, serif;
+  font-size: 0.58em;
+  line-height: 0;
+  vertical-align: super;
+  color: var(--text-muted);
+}
+
+.obsidian-books-manuscript-file
+  .markdown-source-view.mod-cm6
+  .cm-line.obsidian-mirror-widget-line {
+  margin-block: 1.1em;
+  padding-inline: 1.5em;
+  text-indent: 0;
+}
+
+.obsidian-books-manuscript-file .obsidian-mirror-inline,
+.obsidian-books-manuscript-file .obsidian-mirror-widget {
+  margin: 0;
+}
+
 .obsidian-books-manuscript-file .obsidian-mirror-block,
 .obsidian-books-manuscript-file .obsidian-mirror-live-preview-block {
   border: none;
   border-left: 2px solid var(--background-modifier-border);
+  box-shadow: none;
   border-radius: 0;
   background: transparent;
+  margin: 0;
+  padding: 0 0 0 0.75em;
   color: var(--text-muted);
 }
 
 .obsidian-books-manuscript-file .obsidian-mirror-toolbar {
-  border: none;
-  padding: 0 0 2px 0;
+  display: none;
 }
 
 .obsidian-books-manuscript-file .obsidian-mirror-body {
-  padding: 0 0 0 12px;
-  font-size: 0.86em;
-  line-height: 1.45;
+  padding: 0;
+  font-size: 0.944em;
+  line-height: inherit;
 }
 
 .obsidian-books-manuscript-file .obsidian-mirror-status {
-  font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
-  color: var(--text-faint);
+  display: none;
+}
+
+.obsidian-books-manuscript-file .obsidian-mirror-actions,
+.obsidian-books-manuscript-file .obsidian-mirror-source-button,
+.obsidian-books-manuscript-file .obsidian-mirror-edit-button {
+  display: none;
+}
+
+.obsidian-books-manuscript-file .obsidian-mirror-preview,
+.obsidian-books-manuscript-file .obsidian-mirror-preview.markdown-rendered {
+  font-family: ui-serif, "New York", Georgia, serif;
+  color: inherit;
 }
 
 .obsidian-books-manuscript-file .obsidian-mirror-preview p {
   margin: 0;
+  text-indent: 0;
 }
 
 @media (max-width: 720px) {
@@ -931,9 +1083,4 @@
     grid-column: 2;
     justify-content: flex-start;
   }
-}
-
-.workspace-leaf-content[data-type="file-explorer"]
-  .nav-folder:has(> .nav-folder-title[data-path="Books"]) {
-  display: none;
 }

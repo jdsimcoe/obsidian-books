@@ -9,3 +9,8 @@ export const BOOKS_SCRATCHPAD_VIEW_TYPE = "obsidian-books-scratchpad";
 export const BOOK_FILE_NAME = "book.json";
 export const SCRATCHPAD_FILE_NAME = "scratchpad.json";
 export const SCRATCHPAD_SCHEMA_VERSION = 1;
+// Each book keeps its scratchpad snippets as individual notes in this subfolder
+// and surfaces them through a Bases card view stored alongside.
+export const SCRATCHPAD_FOLDER_NAME = "Scratchpad";
+export const BOOK_BASE_FILE_NAME = "Scratchpad.base";
+export const SCRATCH_NOTE_TYPE = "scratch";

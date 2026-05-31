@@ -21,7 +21,7 @@ export class ManuscriptStyler extends Component {
 		this.registerEvent(this.app.workspace.on("layout-change", sync));
 		this.registerEvent(this.app.vault.on("rename", sync));
 		this.app.workspace.onLayoutReady(sync);
-		this.registerDomEvent(document, "click", (evt) => this.handleBreadcrumbClick(evt), {capture: true});
+		this.registerDomEvent(activeDocument, "click", (evt) => this.handleBreadcrumbClick(evt), {capture: true});
 	}
 
 	onunload(): void {
@@ -46,12 +46,12 @@ export class ManuscriptStyler extends Component {
 
 	private handleBreadcrumbClick(evt: MouseEvent): void {
 		const target = evt.target;
-		if (!(target instanceof HTMLElement)) {
+		if (!isElementLike(target)) {
 			return;
 		}
 
 		const crumb = target.closest(".view-header-breadcrumb");
-		if (!(crumb instanceof HTMLElement)) {
+		if (!isElementLike(crumb)) {
 			return;
 		}
 
@@ -70,7 +70,7 @@ export class ManuscriptStyler extends Component {
 		void this.navigateBreadcrumb(file, index, crumbs.length);
 	}
 
-	private findOwningManuscriptView(el: HTMLElement): MarkdownView | null {
+	private findOwningManuscriptView(el: Element): MarkdownView | null {
 		for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
 			if (leaf.view instanceof MarkdownView && leaf.view.containerEl.contains(el)) {
 				return leaf.view;
@@ -95,4 +95,8 @@ export class ManuscriptStyler extends Component {
 			await this.plugin.openBookSpine(book.manifest.id);
 		}
 	}
+}
+
+function isElementLike(value: unknown): value is Element {
+	return Boolean(value && typeof value === "object" && "closest" in value);
 }

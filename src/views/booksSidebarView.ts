@@ -1,7 +1,7 @@
-import {ItemView, Notice, setIcon, type WorkspaceLeaf} from "obsidian";
+import {ItemView, MarkdownView, Notice, setIcon, type WorkspaceLeaf} from "obsidian";
 import {BOOKS_SIDEBAR_VIEW_TYPE} from "../constants";
 import type BooksPlugin from "../main";
-import {insertMirrorReference} from "../search/insertMirrorReference";
+import {buildBookQuoteInsertion} from "../search/insertBookQuote";
 import type {SearchableNoteResult} from "../search/noteSearchIndex";
 
 export class BooksSidebarView extends ItemView {
@@ -57,8 +57,8 @@ export class BooksSidebarView extends ItemView {
 	private async renderResults(): Promise<void> {
 		const token = this.renderToken + 1;
 		this.renderToken = token;
-		const resultsEl = this.contentEl.querySelector(".obsidian-books-sidebar-results");
-		if (!(resultsEl instanceof HTMLElement)) {
+		const resultsEl = this.contentEl.querySelector<HTMLElement>(".obsidian-books-sidebar-results");
+		if (!resultsEl) {
 			return;
 		}
 
@@ -96,18 +96,18 @@ export class BooksSidebarView extends ItemView {
 			cls: "clickable-icon obsidian-books-icon-button",
 			attr: {
 				type: "button",
-				"aria-label": "Insert mirror embed",
-				title: "Insert mirror embed",
+				"aria-label": "Insert blockquote citation",
+				title: "Insert blockquote citation",
 			},
 		});
 		setIcon(insertButton, "plus");
 		insertButton.addEventListener("click", () => {
 			void (async () => {
 				try {
-					await insertMirrorReference(this.plugin.app, result);
-					new Notice("Inserted research embed.");
+					await this.insertQuote(result);
+					new Notice("Inserted citation.");
 				} catch (error) {
-					new Notice(error instanceof Error ? error.message : "Could not insert research embed.");
+					new Notice(error instanceof Error ? error.message : "Could not insert citation.");
 				}
 			})();
 		});
@@ -124,5 +124,16 @@ export class BooksSidebarView extends ItemView {
 		openButton.addEventListener("click", () => {
 			void this.plugin.app.workspace.getLeaf(false).openFile(result.file);
 		});
+	}
+
+	private async insertQuote(result: SearchableNoteResult): Promise<void> {
+		const markdownView = this.plugin.app.workspace.getActiveViewOfType(MarkdownView);
+		const currentFile = markdownView?.file;
+		if (!markdownView || !currentFile) {
+			throw new Error("Open a Markdown note before inserting research.");
+		}
+
+		const insertion = await buildBookQuoteInsertion(this.plugin.app, result, currentFile);
+		markdownView.editor.replaceSelection(insertion);
 	}
 }

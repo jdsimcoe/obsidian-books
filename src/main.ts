@@ -1,34 +1,70 @@
-import {Notice, Plugin, type TFile, type WorkspaceLeaf} from "obsidian";
+import {Notice, Plugin, PluginSettingTab, Setting, type TFile, type WorkspaceLeaf} from "obsidian";
 import {BookModeController} from "./bookModeController";
 import {BookStore} from "./bookStore";
-import {BOOK_SPINE_VIEW_TYPE, BOOKS_LIBRARY_VIEW_TYPE, BOOKS_SCRATCHPAD_VIEW_TYPE, BOOKS_SIDEBAR_VIEW_TYPE} from "./constants";
+import {
+	BOOK_SPINE_VIEW_TYPE,
+	BOOKS_FOLDER,
+	BOOKS_LIBRARY_VIEW_TYPE,
+	BOOKS_SCRATCHPAD_VIEW_TYPE,
+	BOOKS_SIDEBAR_VIEW_TYPE,
+	SCRATCHPAD_FOLDER_NAME,
+} from "./constants";
 import {createManuscriptEditorExtension} from "./manuscriptEditorExtension";
 import {decorateManuscriptReadingView} from "./manuscriptReadingDecorator";
 import {ManuscriptStyler} from "./manuscriptStyler";
 import {BookModal} from "./modals/bookModal";
 import {BookPickerModal} from "./modals/bookPickerModal";
 import {SectionModal} from "./modals/sectionModal";
+import {BookEmbedNormalizer} from "./search/bookEmbedNormalizer";
+import {BookQuoteSuggester} from "./search/bookQuoteSuggester";
 import {NoteSearchIndex} from "./search/noteSearchIndex";
 import type {BookRecord, BookSectionType} from "./types";
-import {BookSpineView, type BookSpineViewState} from "./views/bookSpineView";
+import {BookSpineView} from "./views/bookSpineView";
 import {BooksLibraryView} from "./views/booksLibraryView";
 import {BooksSidebarView} from "./views/booksSidebarView";
 import {ScratchpadView} from "./views/scratchpadView";
 
+interface BooksSettings {
+	hideBooksFolder: boolean;
+	hideScratchFromSearch: boolean;
+}
+
+const DEFAULT_SETTINGS: BooksSettings = {
+	hideBooksFolder: true,
+	hideScratchFromSearch: false,
+};
+
+// Obsidian's "Excluded files" stores regexes wrapped in slashes — and Bases honors
+// that same filter, so anything excluded here also disappears from the scratchpad's
+// card view. The Books pattern therefore SPARES the Scratchpad/ folders (negative
+// lookahead) so the card view keeps working; hiding the snippets is opt-in.
+const BOOKS_IGNORE_PATTERN = `/^${BOOKS_FOLDER}/(?!.*/${SCRATCHPAD_FOLDER_NAME}/)/`;
+const SCRATCH_IGNORE_PATTERN = `/^${BOOKS_FOLDER}/.*/${SCRATCHPAD_FOLDER_NAME}//`;
+// Patterns older builds may have written; reconciled out if no longer wanted.
+const LEGACY_IGNORE_PATTERNS = [`/^${BOOKS_FOLDER}//`];
+
 export default class BooksPlugin extends Plugin {
 	bookStore: BookStore;
 	noteSearchIndex: NoteSearchIndex;
+	settings: BooksSettings = {...DEFAULT_SETTINGS};
 	private recentBookIds: string[] = [];
 
-	onload(): void {
+	async onload(): Promise<void> {
+		await this.loadSettings();
+
 		this.bookStore = new BookStore(this.app);
 		this.noteSearchIndex = new NoteSearchIndex(this.app);
 		this.addChild(this.bookStore);
 		this.addChild(this.noteSearchIndex);
 		this.addChild(new ManuscriptStyler(this));
 		this.addChild(new BookModeController(this));
+		this.addChild(new BookEmbedNormalizer(this.app));
+
+		this.addSettingTab(new BooksSettingTab(this));
+		this.applyExclusions();
 
 		this.registerEditorExtension(createManuscriptEditorExtension(this.app));
+		this.registerEditorSuggest(new BookQuoteSuggester(this));
 		this.registerMarkdownPostProcessor((el, ctx) => decorateManuscriptReadingView(el, ctx));
 
 		this.registerView(BOOKS_LIBRARY_VIEW_TYPE, (leaf) => new BooksLibraryView(leaf, this));
@@ -81,6 +117,8 @@ export default class BooksPlugin extends Plugin {
 		});
 
 		this.app.workspace.onLayoutReady(() => {
+			// Backfill older books: snippets.json → notes + a Bases card view.
+			void this.bookStore.backfillScratchpads();
 			void this.app.workspace.ensureSideLeaf(BOOKS_LIBRARY_VIEW_TYPE, "left", {
 				active: false,
 				reveal: false,
@@ -90,6 +128,45 @@ export default class BooksPlugin extends Plugin {
 				reveal: false,
 			});
 		});
+	}
+
+	private async loadSettings(): Promise<void> {
+		const stored = (await this.loadData()) as Partial<BooksSettings> | null;
+		this.settings = {...DEFAULT_SETTINGS, ...(stored ?? {})};
+	}
+
+	async saveSettings(): Promise<void> {
+		await this.saveData(this.settings);
+	}
+
+	// Reconcile the vault's excluded files with our toggles, so book content
+	// stays out of search / quick switcher / graph / backlinks. We only touch our
+	// own patterns and leave the rest of the list intact. The Bases card view
+	// reads notes directly, so it is unaffected. Obsidian compiles the change on
+	// the next reload.
+	applyExclusions(): void {
+		const vault = this.app.vault as unknown as {
+			getConfig(key: string): unknown;
+			setConfig(key: string, value: unknown): void;
+		};
+		const raw = vault.getConfig("userIgnoreFilters");
+		const current = Array.isArray(raw)
+			? raw.filter((value): value is string => typeof value === "string")
+			: [];
+		// Drop every pattern we manage (current + legacy), then re-add the wanted
+		// ones — this also cleans up stale patterns from earlier builds.
+		const ours = new Set([BOOKS_IGNORE_PATTERN, SCRATCH_IGNORE_PATTERN, ...LEGACY_IGNORE_PATTERNS]);
+		const next = current.filter((value) => !ours.has(value));
+		if (this.settings.hideBooksFolder) {
+			next.push(BOOKS_IGNORE_PATTERN);
+		}
+		if (this.settings.hideScratchFromSearch) {
+			next.push(SCRATCH_IGNORE_PATTERN);
+		}
+		if (JSON.stringify(next) === JSON.stringify(current)) {
+			return;
+		}
+		vault.setConfig("userIgnoreFilters", next.length ? next : null);
 	}
 
 	// Reveal and focus the scratchpad for a book (spine entry point).
@@ -155,7 +232,7 @@ export default class BooksPlugin extends Plugin {
 		// rather than a BookSpineView until the tab is activated.
 		const existing = this.app.workspace
 			.getLeavesOfType(BOOK_SPINE_VIEW_TYPE)
-			.find((leaf) => (leaf.getViewState().state as BookSpineViewState | undefined)?.bookId === bookId);
+			.find((leaf) => leaf.getViewState().state?.bookId === bookId);
 		if (existing) {
 			// setActiveLeaf brings the tab forward and loads it if deferred.
 			// Avoid revealLeaf here: on an already-open tab it triggers Obsidian's
@@ -179,7 +256,7 @@ export default class BooksPlugin extends Plugin {
 	async ensureBookSpineTab(bookId: string): Promise<boolean> {
 		const existing = this.app.workspace
 			.getLeavesOfType(BOOK_SPINE_VIEW_TYPE)
-			.find((leaf) => (leaf.getViewState().state as BookSpineViewState | undefined)?.bookId === bookId);
+			.find((leaf) => leaf.getViewState().state?.bookId === bookId);
 		if (existing) {
 			return false;
 		}
@@ -267,7 +344,7 @@ export default class BooksPlugin extends Plugin {
 			}
 		}
 
-		const spineLeaf = this.app.workspace.getLeavesOfType(BOOK_SPINE_VIEW_TYPE)[0] as WorkspaceLeaf | undefined;
+		const spineLeaf: WorkspaceLeaf | undefined = this.app.workspace.getLeavesOfType(BOOK_SPINE_VIEW_TYPE)[0];
 		if (spineLeaf?.view instanceof BookSpineView) {
 			const state = spineLeaf.view.getState();
 			if (state.bookId) {
@@ -282,5 +359,52 @@ export default class BooksPlugin extends Plugin {
 	getAuthoringLeaf(): WorkspaceLeaf {
 		return this.app.workspace.getMostRecentLeaf(this.app.workspace.rootSplit)
 			?? this.app.workspace.getLeaf("tab");
+	}
+}
+
+class BooksSettingTab extends PluginSettingTab {
+	private readonly plugin: BooksPlugin;
+
+	constructor(plugin: BooksPlugin) {
+		super(plugin.app, plugin);
+		this.plugin = plugin;
+	}
+
+	display(): void {
+		this.containerEl.empty();
+
+		new Setting(this.containerEl)
+			// "Books" is the literal folder name, not a stray capital.
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
+			.setName("Hide Books folder from search")
+			.setDesc(
+				"Keep the Books folder — chapters and canvases — out of search, the quick switcher, graph, "
+				+ "and backlinks. Scratchpad notes are spared so their card view keeps working, and the "
+				+ "library and spine are unaffected. Takes effect after a reload.",
+			)
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.hideBooksFolder);
+				toggle.onChange((value) => {
+					this.plugin.settings.hideBooksFolder = value;
+					this.plugin.applyExclusions();
+					void this.plugin.saveSettings();
+				});
+			});
+
+		new Setting(this.containerEl)
+			.setName("Hide scratchpad notes from search")
+			.setDesc(
+				"Also hide the scratchpad snippet notes. Heads up: Bases honors the same filter, so turning "
+				+ "this on empties the scratchpad card view (the sidebar still works). Off by default. "
+				+ "Takes effect after a reload.",
+			)
+			.addToggle((toggle) => {
+				toggle.setValue(this.plugin.settings.hideScratchFromSearch);
+				toggle.onChange((value) => {
+					this.plugin.settings.hideScratchFromSearch = value;
+					this.plugin.applyExclusions();
+					void this.plugin.saveSettings();
+				});
+			});
 	}
 }

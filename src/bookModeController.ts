@@ -1,5 +1,5 @@
 import {Component, type WorkspaceLeaf} from "obsidian";
-import {BOOK_SPINE_VIEW_TYPE, BOOKS_LIBRARY_VIEW_TYPE} from "./constants";
+import {BOOK_SPINE_VIEW_TYPE, BOOKS_LIBRARY_VIEW_TYPE, BOOKS_SCRATCHPAD_VIEW_TYPE} from "./constants";
 import type BooksPlugin from "./main";
 import {isBooksPath} from "./utils/paths";
 
@@ -7,10 +7,11 @@ const FILE_EXPLORER_VIEW_TYPE = "file-explorer";
 
 type Mode = "book" | "file";
 
-// Keeps the left sidebar in step with the active tab: book notes / the book spine
-// put you in "Books mode" (Books library tab + the book's summary), normal notes
-// put you in "Files mode" (file explorer tab). Only fires on mode transitions and
-// never forces a collapsed sidebar open or steals editor focus.
+// Keeps the sidebars in step with the active tab: book notes / the book spine
+// put you in "Books mode" (Books library tab on the left, the book's scratchpad
+// on the right), normal notes put you in "Files mode" (file explorer tab). Only
+// fires on mode transitions and never forces a collapsed sidebar open or steals
+// editor focus.
 export class BookModeController extends Component {
 	private readonly plugin: BooksPlugin;
 	private currentMode: Mode | null = null;
@@ -61,10 +62,19 @@ export class BookModeController extends Component {
 				}
 			}
 
-			// Switch the left sidebar, but only when the mode actually changes.
+			// Switch the sidebars, but only when the mode actually changes.
 			if (resolved.mode !== this.currentMode) {
 				this.currentMode = resolved.mode;
-				this.activateSidebar(resolved.mode === "book" ? BOOKS_LIBRARY_VIEW_TYPE : FILE_EXPLORER_VIEW_TYPE);
+				const {workspace} = this.plugin.app;
+				if (resolved.mode === "book") {
+					this.activateSidebar(BOOKS_LIBRARY_VIEW_TYPE, workspace.leftSplit);
+					// Bring the book's scratchpad forward in the right sidebar too.
+					this.activateSidebar(BOOKS_SCRATCHPAD_VIEW_TYPE, workspace.rightSplit);
+				} else {
+					this.activateSidebar(FILE_EXPLORER_VIEW_TYPE, workspace.leftSplit);
+					// Leaving a book: hand the right sidebar back to its first tab.
+					this.activateFirstRightTab();
+				}
 				shuffled = true;
 			}
 
@@ -89,18 +99,36 @@ export class BookModeController extends Component {
 		return isBooksPath(filePath) ? {mode: "book", bookFilePath: filePath} : {mode: "file"};
 	}
 
-	// Switch the left sidebar's active tab without stealing focus or forcing a
+	// Switch a sidebar's active tab without stealing focus or forcing a
 	// collapsed sidebar open.
-	private activateSidebar(viewType: string): void {
+	private activateSidebar(viewType: string, split: {collapsed: boolean; collapse(): void}): void {
 		const sidebarLeaf = this.plugin.app.workspace.getLeavesOfType(viewType)[0];
 		if (!sidebarLeaf) {
 			return;
 		}
-		const leftSplit = this.plugin.app.workspace.leftSplit;
-		const wasCollapsed = leftSplit.collapsed;
+		const wasCollapsed = split.collapsed;
 		this.plugin.app.workspace.setActiveLeaf(sidebarLeaf, {focus: false});
-		if (wasCollapsed && !leftSplit.collapsed) {
-			leftSplit.collapse();
+		if (wasCollapsed && !split.collapsed) {
+			split.collapse();
+		}
+	}
+
+	// Bring the right sidebar's leftmost tab forward (the default view shown
+	// before the scratchpad was surfaced). Same gentle rules: no focus steal,
+	// no forcing a collapsed sidebar open.
+	private activateFirstRightTab(): void {
+		const workspace = this.plugin.app.workspace;
+		const scratchpad = workspace.getLeavesOfType(BOOKS_SCRATCHPAD_VIEW_TYPE)[0];
+		const group = (scratchpad as unknown as {parent?: {children?: WorkspaceLeaf[]}} | undefined)?.parent;
+		const firstLeaf = group?.children?.[0];
+		if (!firstLeaf || firstLeaf === scratchpad) {
+			return;
+		}
+		const rightSplit = workspace.rightSplit;
+		const wasCollapsed = rightSplit.collapsed;
+		workspace.setActiveLeaf(firstLeaf, {focus: false});
+		if (wasCollapsed && !rightSplit.collapsed) {
+			rightSplit.collapse();
 		}
 	}
 }

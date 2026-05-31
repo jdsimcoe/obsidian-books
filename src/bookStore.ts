@@ -1,5 +1,13 @@
-import {Component, normalizePath, TAbstractFile, TFile, TFolder, type App} from "obsidian";
-import {BOOK_FILE_NAME, BOOK_SCHEMA_VERSION, BOOKS_FOLDER, SCRATCHPAD_FILE_NAME, SCRATCHPAD_SCHEMA_VERSION} from "./constants";
+import {Component, normalizePath, parseYaml, TAbstractFile, TFile, TFolder, type App, type WorkspaceLeaf} from "obsidian";
+import {
+	BOOK_BASE_FILE_NAME,
+	BOOK_FILE_NAME,
+	BOOK_SCHEMA_VERSION,
+	BOOKS_FOLDER,
+	SCRATCH_NOTE_TYPE,
+	SCRATCHPAD_FILE_NAME,
+	SCRATCHPAD_FOLDER_NAME,
+} from "./constants";
 import type {
 	BookEntry,
 	BookManifest,
@@ -30,6 +38,14 @@ import {
 
 const SECTION_TYPES: BookSectionType[] = ["intro", "chapter", "interlude", "appendix", "backmatter"];
 const EMPTY_CANVAS = "{\n\t\"nodes\": [],\n\t\"edges\": []\n}\n";
+
+// A short, file-safe label from a snippet's first line (used as the note name /
+// the card title in the Bases view).
+function snippetTitle(text: string): string {
+	const firstLine = text.trim().split(/\r?\n/u, 1)[0] ?? "";
+	const condensed = firstLine.replace(/\s+/gu, " ").trim();
+	return condensed.length > 60 ? `${condensed.slice(0, 60).trim()}…` : condensed;
+}
 
 export class BookStore extends Component {
 	private readonly app: App;
@@ -200,8 +216,10 @@ export class BookStore extends Component {
 
 		const manifestPath = normalizePath(`${folderPath}/${BOOK_FILE_NAME}`);
 		await this.writeManifest(manifestPath, manifest);
+		const record: BookRecord = {folderPath, manifestPath, slug, manifest};
+		await this.ensureScratchpadBase(record);
 		this.notifyChanged();
-		return {folderPath, manifestPath, slug, manifest};
+		return record;
 	}
 
 	async updateBookDetails(book: BookRecord, input: CreateBookInput): Promise<BookRecord> {
@@ -491,13 +509,18 @@ export class BookStore extends Component {
 			throw new Error("Chapter file not found.");
 		}
 
-		// If the chapter is already open in a tab, focus it instead of opening a
-		// duplicate. Match on serialized state so deferred (background) tabs match.
-		const existing = this.app.workspace
-			.getLeavesOfType("markdown")
-			.find((leaf) => (leaf.getViewState().state as {file?: string} | undefined)?.file === file.path);
-		if (existing) {
-			this.app.workspace.setActiveLeaf(existing, {focus: true});
+		// If the entry is already open in a tab, focus it instead of opening a
+		// duplicate. Check every leaf (not just markdown) so canvases match too,
+		// and match on serialized state so deferred (background) tabs match.
+		const open: WorkspaceLeaf[] = [];
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			if ((leaf.getViewState().state as {file?: string} | undefined)?.file === file.path) {
+				open.push(leaf);
+			}
+		});
+		const [openLeaf] = open;
+		if (openLeaf) {
+			this.app.workspace.setActiveLeaf(openLeaf, {focus: true});
 			return;
 		}
 
@@ -517,51 +540,175 @@ export class BookStore extends Component {
 		return total;
 	}
 
+	// Snippets live as one note per snippet under <book>/Scratchpad, so a Bases
+	// card view can read them (Bases can only query notes, never raw JSON).
 	async listSnippets(book: BookRecord): Promise<ScratchSnippet[]> {
-		const path = this.scratchpadPath(book);
-		if (!await this.app.vault.adapter.exists(path)) {
+		const folder = this.app.vault.getAbstractFileByPath(this.scratchpadFolderPath(book));
+		if (!(folder instanceof TFolder)) {
 			return [];
 		}
-		try {
-			const parsed = JSON.parse(await this.app.vault.adapter.read(path)) as Partial<Scratchpad>;
-			if (!Array.isArray(parsed.snippets)) {
-				return [];
+		const snippets: ScratchSnippet[] = [];
+		for (const child of folder.children) {
+			if (child instanceof TFile && child.extension === "md") {
+				const snippet = await this.readSnippetNote(child);
+				if (snippet) {
+					snippets.push(snippet);
+				}
 			}
-			return parsed.snippets.filter(
-				(snippet): snippet is ScratchSnippet =>
-					typeof snippet?.id === "string" && typeof snippet?.text === "string",
-			);
-		} catch {
-			return [];
 		}
+		return snippets.sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 	}
 
 	async addSnippet(book: BookRecord, text: string, sourceFile?: string): Promise<ScratchSnippet> {
-		const snippet: ScratchSnippet = {
-			id: createId("snip"),
-			text,
-			createdAt: nowIso(),
-			...(sourceFile ? {sourceFile} : {}),
-		};
-		const snippets = await this.listSnippets(book);
-		snippets.unshift(snippet);
-		await this.writeScratchpad(book, snippets);
+		const snippet = await this.writeSnippetNote(book, text, sourceFile, nowIso());
+		await this.ensureScratchpadBase(book);
+		this.notifyChanged();
 		return snippet;
 	}
 
 	async removeSnippet(book: BookRecord, id: string): Promise<void> {
-		const snippets = (await this.listSnippets(book)).filter((snippet) => snippet.id !== id);
-		await this.writeScratchpad(book, snippets);
-	}
-
-	private scratchpadPath(book: BookRecord): string {
-		return normalizePath(`${book.folderPath}/${SCRATCHPAD_FILE_NAME}`);
-	}
-
-	private async writeScratchpad(book: BookRecord, snippets: ScratchSnippet[]): Promise<void> {
-		const data: Scratchpad = {schemaVersion: SCRATCHPAD_SCHEMA_VERSION, snippets};
-		await this.app.vault.adapter.write(this.scratchpadPath(book), `${JSON.stringify(data, null, "\t")}\n`);
+		const normalized = normalizePath(id);
+		if (!normalized.startsWith(`${this.scratchpadFolderPath(book)}/`)) {
+			return;
+		}
+		const file = this.app.vault.getAbstractFileByPath(normalized);
+		if (file instanceof TFile) {
+			await this.app.fileManager.trashFile(file);
+		}
 		this.notifyChanged();
+	}
+
+	// Create or return the per-book Bases file. Self-contained: it filters by
+	// the snippet note `type` and `book` id, so renaming the folder won't break it.
+	async ensureScratchpadBase(book: BookRecord): Promise<TFile | null> {
+		const basePath = normalizePath(`${book.folderPath}/${BOOK_BASE_FILE_NAME}`);
+		if (!await this.app.vault.adapter.exists(basePath)) {
+			await this.app.vault.create(basePath, this.scratchpadBaseContent(book));
+		}
+		const file = this.app.vault.getAbstractFileByPath(basePath);
+		return file instanceof TFile ? file : null;
+	}
+
+	// One-time backfill for books that predate this feature: convert the old
+	// scratchpad.json into notes and make sure the Bases file exists.
+	async backfillScratchpads(): Promise<void> {
+		for (const book of await this.listBooks()) {
+			await this.migrateScratchpadJson(book);
+			await this.ensureScratchpadBase(book);
+		}
+	}
+
+	private scratchpadFolderPath(book: BookRecord): string {
+		return normalizePath(`${book.folderPath}/${SCRATCHPAD_FOLDER_NAME}`);
+	}
+
+	private async writeSnippetNote(
+		book: BookRecord,
+		text: string,
+		sourceFile: string | undefined,
+		createdAt: string,
+	): Promise<ScratchSnippet> {
+		const folderPath = this.scratchpadFolderPath(book);
+		await ensureNestedFolder(this.app, folderPath);
+		const baseName = sanitizeFileName(snippetTitle(text), "Snippet");
+		const notePath = await uniquePath(this.app, `${folderPath}/${baseName}.md`);
+		const frontmatter = serializeFrontmatter({
+			type: SCRATCH_NOTE_TYPE,
+			book: book.manifest.id,
+			text,
+			...(sourceFile ? {source: sourceFile} : {}),
+			created: createdAt,
+		});
+		await this.app.vault.create(notePath, frontmatter);
+		return {
+			id: notePath,
+			text,
+			createdAt,
+			...(sourceFile ? {sourceFile} : {}),
+		};
+	}
+
+	private async readSnippetNote(file: TFile): Promise<ScratchSnippet | null> {
+		let frontmatter: Record<string, unknown> = {};
+		try {
+			const content = await this.app.vault.cachedRead(file);
+			const match = /^---\n([\s\S]*?)\n---/u.exec(content);
+			if (match) {
+				frontmatter = (parseYaml(match[1] ?? "") as Record<string, unknown> | null) ?? {};
+			}
+		} catch {
+			return null;
+		}
+		const text = typeof frontmatter.text === "string" ? frontmatter.text : "";
+		if (!text.trim()) {
+			return null;
+		}
+		const source = typeof frontmatter.source === "string" ? frontmatter.source : undefined;
+		const created = typeof frontmatter.created === "string"
+			? frontmatter.created
+			: new Date(file.stat.ctime).toISOString();
+		return {
+			id: file.path,
+			text,
+			createdAt: created,
+			...(source ? {sourceFile: source} : {}),
+		};
+	}
+
+	private async migrateScratchpadJson(book: BookRecord): Promise<void> {
+		const jsonPath = normalizePath(`${book.folderPath}/${SCRATCHPAD_FILE_NAME}`);
+		if (!await this.app.vault.adapter.exists(jsonPath)) {
+			return;
+		}
+		const folder = this.app.vault.getAbstractFileByPath(this.scratchpadFolderPath(book));
+		const alreadyMigrated = folder instanceof TFolder
+			&& folder.children.some((child) => child instanceof TFile && child.extension === "md");
+		if (!alreadyMigrated) {
+			try {
+				const parsed = JSON.parse(await this.app.vault.adapter.read(jsonPath)) as Partial<Scratchpad>;
+				const snippets = Array.isArray(parsed.snippets) ? parsed.snippets : [];
+				for (const snippet of snippets) {
+					if (snippet && typeof snippet.text === "string" && snippet.text.trim()) {
+						await this.writeSnippetNote(book, snippet.text, snippet.sourceFile, snippet.createdAt ?? nowIso());
+					}
+				}
+			} catch (error) {
+				console.error(`Books: could not migrate ${jsonPath}`, error);
+				return;
+			}
+		}
+		try {
+			await this.app.vault.adapter.remove(jsonPath);
+		} catch (error) {
+			console.error(`Books: could not remove ${jsonPath}`, error);
+		}
+	}
+
+	private scratchpadBaseContent(book: BookRecord): string {
+		return [
+			"properties:",
+			"  property.text:",
+			"    displayName: Snippet",
+			"  property.source:",
+			"    displayName: Source",
+			"  property.created:",
+			"    displayName: Saved",
+			"views:",
+			"  - type: cards",
+			"    name: Scratchpad",
+			"    filters:",
+			"      and:",
+			`        - type == "${SCRATCH_NOTE_TYPE}"`,
+			`        - book == ${JSON.stringify(book.manifest.id)}`,
+			"    order:",
+			"      - text",
+			"      - source",
+			"      - created",
+			"    sort:",
+			"      - property: created",
+			"        direction: DESC",
+			"",
+		].join("\n");
 	}
 
 	// Concatenate the whole book into one clean-manuscript Markdown string (spine

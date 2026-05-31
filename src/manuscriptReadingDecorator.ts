@@ -1,5 +1,5 @@
 import {type MarkdownPostProcessorContext} from "obsidian";
-import {analyzeManuscript, firstWordRange, hasTk, matchTk, type ManuscriptAnalysis} from "./manuscriptTypography";
+import {analyzeManuscript, firstWordsRange, hasTk, matchTk, type ManuscriptAnalysis} from "./manuscriptTypography";
 import {isBooksPath} from "./utils/paths";
 
 // Single-entry memo so repeated post-processor calls within one render don't
@@ -29,7 +29,7 @@ export function decorateManuscriptReadingView(
 }
 
 function applyParagraphTreatment(el: HTMLElement, ctx: MarkdownPostProcessorContext): void {
-	const paragraph = el instanceof HTMLParagraphElement ? el : el.querySelector("p");
+	const paragraph = el.instanceOf(HTMLParagraphElement) ? el : el.querySelector("p");
 	if (!paragraph) {
 		return;
 	}
@@ -48,23 +48,45 @@ function applyParagraphTreatment(el: HTMLElement, ctx: MarkdownPostProcessorCont
 	}
 
 	if (analysis.smallCapsLines.has(info.lineStart)) {
-		wrapFirstWordSmallCaps(paragraph);
+		wrapOpenerSmallCaps(paragraph);
+	}
+
+	// Wrap the first letter so it can be styled as a square drop-cap tile. Runs
+	// after the small-caps pass so it nests inside that span when both apply.
+	if (kind === "chapter-open") {
+		wrapDropCap(paragraph);
 	}
 }
 
-function wrapFirstWordSmallCaps(paragraph: HTMLElement): void {
-	const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+function wrapDropCap(paragraph: HTMLElement): void {
+	const walker = activeDocument.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+	let node = walker.nextNode();
+	while (node) {
+		const textNode = node as Text;
+		if ((textNode.nodeValue ?? "").length > 0 && !textNode.parentElement?.closest("code, pre")) {
+			const range = activeDocument.createRange();
+			range.setStart(textNode, 0);
+			range.setEnd(textNode, 1);
+			const span = createEl("span", {cls: "obsidian-books-dropcap"});
+			range.surroundContents(span);
+			return;
+		}
+		node = walker.nextNode();
+	}
+}
+
+function wrapOpenerSmallCaps(paragraph: HTMLElement): void {
+	const walker = activeDocument.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
 	let node = walker.nextNode();
 	while (node) {
 		const textNode = node as Text;
 		if (!textNode.parentElement?.closest("code, pre")) {
-			const word = firstWordRange(textNode.nodeValue ?? "");
-			if (word) {
-				const range = document.createRange();
-				range.setStart(textNode, word.start);
-				range.setEnd(textNode, word.end);
-				const span = document.createElement("span");
-				span.className = "obsidian-books-smallcaps";
+			const words = firstWordsRange(textNode.nodeValue ?? "", 4);
+			if (words) {
+				const range = activeDocument.createRange();
+				range.setStart(textNode, words.start);
+				range.setEnd(textNode, words.end);
+				const span = createEl("span", {cls: "obsidian-books-smallcaps"});
 				range.surroundContents(span);
 				return;
 			}
@@ -74,7 +96,7 @@ function wrapFirstWordSmallCaps(paragraph: HTMLElement): void {
 }
 
 function highlightTk(el: HTMLElement): void {
-	const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+	const walker = activeDocument.createTreeWalker(el, NodeFilter.SHOW_TEXT);
 	let node = walker.nextNode();
 	while (node) {
 		const textNode = node as Text;
@@ -104,15 +126,13 @@ function wrapTkNote(textNode: Text): void {
 	const tkText = value.slice(first.start, first.end);
 	const afterTk = value.slice(first.end);
 
-	const container = document.createElement("span");
-	container.className = "obsidian-books-tk-note";
+	const container = createEl("span", {cls: "obsidian-books-tk-note"});
 
-	const tkSpan = document.createElement("span");
-	tkSpan.className = "obsidian-books-tk";
+	const tkSpan = createEl("span", {cls: "obsidian-books-tk"});
 	tkSpan.textContent = tkText;
 	container.appendChild(tkSpan);
 	if (afterTk) {
-		container.appendChild(document.createTextNode(afterTk));
+		container.appendChild(activeDocument.createTextNode(afterTk));
 	}
 
 	// Everything after this text node (rest of the line/paragraph) is part of
@@ -122,9 +142,9 @@ function wrapTkNote(textNode: Text): void {
 		following.push(sibling);
 	}
 
-	const fragment = document.createDocumentFragment();
+	const fragment = activeDocument.createDocumentFragment();
 	if (before) {
-		fragment.appendChild(document.createTextNode(before));
+		fragment.appendChild(activeDocument.createTextNode(before));
 	}
 	fragment.appendChild(container);
 	parent.replaceChild(fragment, textNode);

@@ -134,8 +134,8 @@ export class ScratchpadView extends ItemView {
 
 	private async renderList(book: BookRecord): Promise<void> {
 		const token = this.renderToken;
-		const listEl = this.contentEl.querySelector(".obsidian-books-scratchpad-list");
-		if (!(listEl instanceof HTMLElement)) {
+		const listEl = this.contentEl.querySelector<HTMLElement>(".obsidian-books-scratchpad-list");
+		if (!listEl) {
 			return;
 		}
 		listEl.empty();

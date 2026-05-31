@@ -6,7 +6,7 @@ import {ItemView, Modal, Notice, Setting, setIcon, TextComponent, type App, type
 import {BOOK_SPINE_VIEW_TYPE} from "../constants";
 import type BooksPlugin from "../main";
 import {BookModal} from "../modals/bookModal";
-import type {BookEntry, BookNode, BookPart, BookRecord, CreateBookInput} from "../types";
+import type {BookEntry, BookPart, BookRecord, CreateBookInput} from "../types";
 import {sanitizeFileName} from "../utils/ids";
 import {flattenEntries, isCanvasEntry, isPart} from "../utils/tree";
 
@@ -126,6 +126,13 @@ export class BookSpineView extends ItemView {
 		setIcon(scratchpadButton, "signature");
 		scratchpadButton.addEventListener("click", () => void this.plugin.openScratchpad(book.manifest.id));
 
+		const baseButton = actionsEl.createEl("button", {
+			cls: "clickable-icon obsidian-books-icon-button",
+			attr: {type: "button", "aria-label": "Open scratchpad base", title: "Open scratchpad base"},
+		});
+		setIcon(baseButton, "layout-grid");
+		baseButton.addEventListener("click", () => void this.openBase(book));
+
 		const exportButton = actionsEl.createEl("button", {
 			cls: "clickable-icon obsidian-books-icon-button",
 			attr: {type: "button", "aria-label": "Compile book for export", title: "Compile book for export"},
@@ -201,20 +208,39 @@ export class BookSpineView extends ItemView {
 			.filter((entry) => !isCanvasEntry(entry))
 			.forEach((entry, index) => order.set(entry.id, index + 1));
 
-		this.renderHead(listEl, nodes);
-
-		for (const node of nodes) {
+		for (let i = 0; i < nodes.length; i += 1) {
+			const node = nodes[i];
+			if (!node) {
+				continue;
+			}
+			const nextNodeId = nodes[i + 1]?.id ?? null;
 			if (isPart(node)) {
-				this.renderPart(listEl, book, node, order);
+				this.renderPart(listEl, book, node, order, nextNodeId);
 			} else {
-				this.renderEntryRow(listEl, node, null, order);
+				this.renderEntryRow(listEl, node, null, order, nextNodeId);
 			}
 		}
 
 		this.renderTail(listEl);
 	}
 
-	private renderPart(containerEl: HTMLElement, book: BookRecord, part: BookPart, order: Map<string, number>): void {
+	// Constant-height zone at the very bottom: drop here to place an item at the
+	// end of the top level (e.g. below the last section). Constant height so it
+	// never shifts the layout when a drag begins.
+	private renderTail(containerEl: HTMLElement): void {
+		const tailEl = containerEl.createDiv({cls: "obsidian-books-drop-tail"});
+		this.attachDnd(tailEl, {
+			drop: () => ({partId: null, beforeId: null}),
+		});
+	}
+
+	private renderPart(
+		containerEl: HTMLElement,
+		book: BookRecord,
+		part: BookPart,
+		order: Map<string, number>,
+		nextNodeId: string | null,
+	): void {
 		const collapsed = this.collapsedParts.has(part.id);
 		const partEl = containerEl.createDiv({cls: "obsidian-books-part"});
 		if (collapsed) {
@@ -224,9 +250,19 @@ export class BookSpineView extends ItemView {
 		const headerEl = partEl.createDiv({cls: "obsidian-books-part-header"});
 		this.attachDnd(headerEl, {
 			drag: {kind: "part", id: part.id},
-			drop: (kind) => kind === "entry"
-				? {partId: part.id, beforeId: null}
-				: {partId: null, beforeId: part.id},
+			drop: (kind, after) => {
+				if (kind === "part") {
+					if (this.drag?.id === part.id) {
+						return null;
+					}
+					return {partId: null, beforeId: after ? nextNodeId : part.id};
+				}
+				// Entry: top half drops above the section (top level); bottom half
+				// drops into the section at its start.
+				return after
+					? {partId: part.id, beforeId: part.children[0]?.id ?? null}
+					: {partId: null, beforeId: part.id};
+			},
 		});
 
 		const toggleEl = headerEl.createDiv({cls: "obsidian-books-part-toggle"});
@@ -279,12 +315,23 @@ export class BookSpineView extends ItemView {
 			return;
 		}
 
-		for (const child of part.children) {
-			this.renderEntryRow(childrenEl, child, part.id, order);
+		for (let j = 0; j < part.children.length; j += 1) {
+			const child = part.children[j];
+			if (!child) {
+				continue;
+			}
+			const nextChildId = part.children[j + 1]?.id ?? null;
+			this.renderEntryRow(childrenEl, child, part.id, order, nextChildId);
 		}
 	}
 
-	private renderEntryRow(containerEl: HTMLElement, entry: BookEntry, partId: string | null, order: Map<string, number>): void {
+	private renderEntryRow(
+		containerEl: HTMLElement,
+		entry: BookEntry,
+		partId: string | null,
+		order: Map<string, number>,
+		nextId: string | null,
+	): void {
 		const isCanvas = isCanvasEntry(entry);
 		const entryEl = containerEl.createDiv({cls: "obsidian-books-entry"});
 		if (isCanvas) {
@@ -296,11 +343,15 @@ export class BookSpineView extends ItemView {
 		const rowEl = entryEl.createDiv({cls: "obsidian-books-section-row"});
 		this.attachDnd(rowEl, {
 			drag: {kind: "entry", id: entry.id},
-			drop: (kind) => {
+			drop: (kind, after) => {
 				if (kind === "part") {
-					return partId === null ? {partId: null, beforeId: entry.id} : null;
+					// Parts live at the top level only.
+					return partId === null ? {partId: null, beforeId: after ? nextId : entry.id} : null;
 				}
-				return {partId, beforeId: entry.id};
+				if (this.drag?.id === entry.id) {
+					return null;
+				}
+				return {partId, beforeId: after ? nextId : entry.id};
 			},
 		});
 
@@ -331,58 +382,54 @@ export class BookSpineView extends ItemView {
 		});
 	}
 
-	// Drop zone above the first node, for placing an entry/part at the very top
-	// (top level, above sections).
-	private renderHead(containerEl: HTMLElement, nodes: BookNode[]): void {
-		const firstId = nodes[0]?.id ?? null;
-		const headEl = containerEl.createDiv({cls: "obsidian-books-drop-head"});
-		this.attachDnd(headEl, {
-			drop: () => ({partId: null, beforeId: firstId}),
-		});
+	// Whether the cursor is in the lower half of the element (→ insert after).
+	private isAfter(evt: DragEvent, el: HTMLElement): boolean {
+		const rect = el.getBoundingClientRect();
+		return evt.clientY > rect.top + rect.height / 2;
 	}
 
-	private renderTail(containerEl: HTMLElement): void {
-		const tailEl = containerEl.createDiv({cls: "obsidian-books-drop-tail"});
-		this.attachDnd(tailEl, {
-			drop: () => ({partId: null, beforeId: null}),
-		});
-	}
-
-	private attachDnd(rowEl: HTMLElement, opts: {drag?: DragState; drop?: (kind: DragKind) => DropSpec | null}): void {
+	private attachDnd(
+		rowEl: HTMLElement,
+		opts: {drag?: DragState; drop?: (kind: DragKind, after: boolean) => DropSpec | null},
+	): void {
 		if (opts.drag) {
 			const drag = opts.drag;
 			rowEl.draggable = true;
 			rowEl.addEventListener("dragstart", (evt) => {
 				this.drag = drag;
 				rowEl.addClass("is-dragging");
-				this.contentEl.addClass("is-dragging");
 				evt.stopPropagation();
 			});
 			rowEl.addEventListener("dragend", () => {
 				this.drag = null;
 				rowEl.removeClass("is-dragging");
-				this.contentEl.removeClass("is-dragging");
 			});
 		}
 
 		if (opts.drop) {
 			const resolve = opts.drop;
+			const clear = () => rowEl.removeClasses(["is-drop-before", "is-drop-after"]);
 			rowEl.addEventListener("dragover", (evt) => {
-				if (!this.drag || !resolve(this.drag.kind)) {
+				if (!this.drag) {
+					return;
+				}
+				const after = this.isAfter(evt, rowEl);
+				if (!resolve(this.drag.kind, after)) {
 					return;
 				}
 				evt.preventDefault();
 				evt.stopPropagation();
-				rowEl.addClass("is-drop-target");
+				clear();
+				rowEl.addClass(after ? "is-drop-after" : "is-drop-before");
 			});
-			rowEl.addEventListener("dragleave", () => rowEl.removeClass("is-drop-target"));
+			rowEl.addEventListener("dragleave", clear);
 			rowEl.addEventListener("drop", (evt) => {
-				rowEl.removeClass("is-drop-target");
+				clear();
 				if (!this.drag) {
 					return;
 				}
 				const drag = this.drag;
-				const spec = resolve(drag.kind);
+				const spec = resolve(drag.kind, this.isAfter(evt, rowEl));
 				if (!spec) {
 					return;
 				}
@@ -463,6 +510,31 @@ export class BookSpineView extends ItemView {
 			}
 		} catch (error) {
 			new Notice(error instanceof Error ? error.message : "Could not open chapter.");
+		}
+	}
+
+	// Open this book's scratchpad Bases card view, reusing its tab if already open.
+	private async openBase(book: BookRecord): Promise<void> {
+		try {
+			const file = await this.plugin.bookStore.ensureScratchpadBase(book);
+			if (!file) {
+				new Notice("Could not open scratchpad base.");
+				return;
+			}
+			const existing: WorkspaceLeaf[] = [];
+			this.app.workspace.iterateAllLeaves((leaf) => {
+				if ((leaf.getViewState().state as {file?: string} | undefined)?.file === file.path) {
+					existing.push(leaf);
+				}
+			});
+			const [openLeaf] = existing;
+			if (openLeaf) {
+				this.app.workspace.setActiveLeaf(openLeaf, {focus: true});
+				return;
+			}
+			await this.app.workspace.getLeaf("tab").openFile(file);
+		} catch (error) {
+			new Notice(error instanceof Error ? error.message : "Could not open scratchpad base.");
 		}
 	}
 
@@ -747,7 +819,7 @@ class RemoveSectionModal extends Modal {
 			.addButton((button) => {
 				button
 					.setButtonText("Remove file")
-					.setWarning()
+					.setDestructive()
 					.onClick(() => {
 						this.didChoose = true;
 						this.onResolve("trash-file");
@@ -797,7 +869,7 @@ class RemovePartModal extends Modal {
 			.addButton((button) => {
 				button
 					.setButtonText("Remove section")
-					.setWarning()
+					.setDestructive()
 					.onClick(() => {
 						this.didChoose = true;
 						this.onResolve(true);

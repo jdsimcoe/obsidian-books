@@ -16,9 +16,9 @@ export interface ManuscriptAnalysis {
 	// the chapter. Every paragraph is numbered: section openers and the indented
 	// continuation paragraphs within a section alike.
 	paragraphNumbers: Map<number, number>;
-	// 0-based source line indices of section starts whose first word should be
-	// rendered in small caps: a new section (not the chapter opener, which gets
-	// the drop cap) that is not a "TK" note line.
+	// 0-based source line index(es) whose opening words should be set in small
+	// caps. Only the document's first body line (the chapter opener) qualifies;
+	// other section openers stay normal.
 	smallCapsLines: Set<number>;
 	// 0-based source line indices that are frontmatter or fenced code (incl.
 	// the fence markers themselves). TK highlighting is suppressed here.
@@ -104,13 +104,13 @@ export function analyzeManuscript(text: string): ManuscriptAnalysis {
 		paragraphNumbers.set(i, paragraphNumber);
 		if (!prevLineWasBody) {
 			if (!seenBody) {
-				// The very first body line of the document gets the drop cap.
+				// The very first body line of the document gets the drop cap, and its
+				// opening words are set in small caps (the drop-cap letter sits on
+				// top). Other section openers stay normal.
 				paragraphKinds.set(i, "chapter-open");
-			}
-			// Small-caps the first word of any section opener that isn't a TK note
-			// (the chapter opener included — its drop-cap letter sits on top).
-			if (!TK_LEADING_RE.test(raw)) {
-				smallCapsLines.add(i);
+				if (!TK_LEADING_RE.test(raw)) {
+					smallCapsLines.add(i);
+				}
 			}
 		} else {
 			// A continuing paragraph within the section: indent its first line.
@@ -147,13 +147,25 @@ export function matchTk(text: string): TkMatch[] {
 	return matches;
 }
 
-const FIRST_WORD_RE = /[\p{L}\p{N}][\p{L}\p{N}'’-]*/u;
+const WORD_RE = /[\p{L}\p{N}][\p{L}\p{N}'’-]*/gu;
 
-// Range of the first word in a line (letters/numbers), or null if none.
-export function firstWordRange(text: string): {start: number; end: number} | null {
-	const match = FIRST_WORD_RE.exec(text);
-	if (!match) {
-		return null;
+// Range spanning the first `count` words of a line (letters/numbers) — or fewer if
+// the line has fewer words — or null if there are none.
+export function firstWordsRange(text: string, count: number): {start: number; end: number} | null {
+	const regex = new RegExp(WORD_RE.source, "gu");
+	let start = -1;
+	let end = -1;
+	let seen = 0;
+	let match: RegExpExecArray | null;
+	while ((match = regex.exec(text)) !== null) {
+		if (start === -1) {
+			start = match.index;
+		}
+		end = match.index + match[0].length;
+		seen += 1;
+		if (seen >= count) {
+			break;
+		}
 	}
-	return {start: match.index, end: match.index + match[0].length};
+	return start === -1 ? null : {start, end};
 }

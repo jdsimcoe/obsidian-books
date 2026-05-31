@@ -24,6 +24,12 @@ export default tseslint.config(
 		},
 	},
 	...obsidianmd.configs.recommended,
+	{
+		files: ["package.json"],
+		rules: {
+			"obsidianmd/no-plugin-as-component": "off",
+		},
+	},
 	globalIgnores([
 		"node_modules",
 		"dist",

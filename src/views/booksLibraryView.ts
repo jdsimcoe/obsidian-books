@@ -98,8 +98,8 @@ export class BooksLibraryView extends ItemView {
 	}
 
 	private async renderBooks(): Promise<void> {
-		const resultsEl = this.contentEl.querySelector(".obsidian-books-library-results");
-		if (!(resultsEl instanceof HTMLElement)) {
+		const resultsEl = this.contentEl.querySelector<HTMLElement>(".obsidian-books-library-results");
+		if (!resultsEl) {
 			return;
 		}
 
@@ -264,9 +264,9 @@ class DeleteBookModal extends Modal {
 				});
 			})
 			.addButton((button) => {
-				button
-					.setButtonText("Delete book")
-					.setWarning()
+					button
+						.setButtonText("Delete book")
+						.setDestructive()
 					.onClick(() => {
 						this.didChoose = true;
 						this.onResolve(true);
