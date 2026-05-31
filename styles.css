@@ -912,7 +912,8 @@
 }
 
 .obsidian-books-manuscript-file .cm-scroller {
-  overflow-x: clip;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .obsidian-books-manuscript-file .cm-line.obsidian-books-para-number {
@@ -1062,6 +1063,24 @@
 }
 
 @media (max-width: 720px) {
+  .obsidian-books-manuscript-file .markdown-source-view,
+  .obsidian-books-manuscript-file .markdown-preview-view,
+  .obsidian-books-manuscript-file .cm-editor,
+  .obsidian-books-manuscript-file .cm-scroller {
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+
+  .obsidian-books-manuscript-file .cm-editor .cm-content {
+    padding-right: 1rem;
+  }
+
+  .obsidian-books-manuscript-file .cm-line.obsidian-books-para-number::after {
+    display: none;
+  }
+
   .obsidian-books-view {
     padding: 16px;
   }

@@ -1,4 +1,4 @@
-import {Notice, Platform, Plugin, PluginSettingTab, Setting, type TFile, type WorkspaceLeaf} from "obsidian";
+import {FuzzySuggestModal, Notice, Platform, Plugin, PluginSettingTab, Setting, type TFile, type WorkspaceLeaf} from "obsidian";
 import {BookModeController} from "./bookModeController";
 import {BookStore} from "./bookStore";
 import {
@@ -91,6 +91,14 @@ export default class BooksPlugin extends Plugin {
 			name: "Open library",
 			callback: () => {
 				void this.openBooksLibrary();
+			},
+		});
+
+		this.addCommand({
+			id: "open-spine",
+			name: "Open book spine",
+			callback: () => {
+				void this.openBookSpineFromCommand();
 			},
 		});
 
@@ -347,6 +355,24 @@ export default class BooksPlugin extends Plugin {
 		this.showCreateSectionModal(book);
 	}
 
+	private async openBookSpineFromCommand(): Promise<void> {
+		const current = await this.getCurrentBook();
+		if (current) {
+			await this.openBookSpine(current.manifest.id);
+			return;
+		}
+
+		const books = await this.bookStore.listBooks();
+		if (!books.length) {
+			new Notice("Create a book first.");
+			return;
+		}
+
+		new BookSpinePickerModal(this.app, books, (book) => {
+			void this.openBookSpine(book.manifest.id);
+		}).open();
+	}
+
 	private async getCurrentBook(): Promise<BookRecord | null> {
 		const activeFile = this.app.workspace.getActiveFile();
 		if (activeFile) {
@@ -379,6 +405,31 @@ export default class BooksPlugin extends Plugin {
 	getAuthoringLeaf(): WorkspaceLeaf {
 		return this.app.workspace.getMostRecentLeaf(this.app.workspace.rootSplit)
 			?? this.app.workspace.getLeaf("tab");
+	}
+}
+
+class BookSpinePickerModal extends FuzzySuggestModal<BookRecord> {
+	private readonly books: BookRecord[];
+	private readonly onChoose: (book: BookRecord) => void;
+
+	constructor(app: BooksPlugin["app"], books: BookRecord[], onChoose: (book: BookRecord) => void) {
+		super(app);
+		this.books = books;
+		this.onChoose = onChoose;
+		this.setPlaceholder("Open book spine");
+		this.emptyStateText = "No books found.";
+	}
+
+	getItems(): BookRecord[] {
+		return this.books;
+	}
+
+	getItemText(book: BookRecord): string {
+		return book.manifest.title;
+	}
+
+	onChooseItem(book: BookRecord): void {
+		this.onChoose(book);
 	}
 }
 
