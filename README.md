@@ -5,6 +5,8 @@ Books is an Obsidian plugin for writing and organizing long-form manuscripts in 
 
 Books are stored locally in your vault under `Books/`. No cloud service, telemetry, or external account is required.
 
+![Obsidian Books interface](images/obsidian-books-interface.png)
+
 ## Features
 
 - **Books navigator**: A left sidebar view that lists your books with chapter and word counts.
