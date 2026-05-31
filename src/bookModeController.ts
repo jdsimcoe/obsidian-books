@@ -1,4 +1,4 @@
-import {Component, type WorkspaceLeaf} from "obsidian";
+import {Component, Platform, type WorkspaceLeaf} from "obsidian";
 import {BOOK_SPINE_VIEW_TYPE, BOOKS_LIBRARY_VIEW_TYPE, BOOKS_SCRATCHPAD_VIEW_TYPE} from "./constants";
 import type BooksPlugin from "./main";
 import {isBooksPath} from "./utils/paths";
@@ -23,6 +23,10 @@ export class BookModeController extends Component {
 	}
 
 	onload(): void {
+		if (Platform.isMobileApp) {
+			return;
+		}
+
 		this.registerEvent(this.plugin.app.workspace.on("active-leaf-change", (leaf) => {
 			void this.handleActiveLeaf(leaf);
 		}));

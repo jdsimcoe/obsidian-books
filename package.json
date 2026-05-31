@@ -1,6 +1,6 @@
 {
   "name": "obsidian-books",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Obsidian plugin for writing and organizing long-form books.",
   "main": "main.js",
   "type": "module",
@@ -15,7 +15,6 @@
   "devDependencies": {
     "@codemirror/state": "6.5.0",
     "@codemirror/view": "6.38.6",
-    "@electron/remote": "^2.1.2",
     "@eslint/js": "9.30.1",
     "@eslint/json": "0.14.0",
     "@types/node": "^16.11.6",

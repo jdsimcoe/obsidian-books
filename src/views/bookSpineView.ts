@@ -1,8 +1,4 @@
-import {writeFileSync} from "fs";
-import {homedir} from "os";
-import {join} from "path";
-import {dialog} from "@electron/remote";
-import {ItemView, Modal, Notice, Setting, setIcon, TextComponent, type App, type ViewStateResult, type WorkspaceLeaf} from "obsidian";
+import {ItemView, Modal, normalizePath, Notice, Platform, Setting, setIcon, TextComponent, type App, type ViewStateResult, type WorkspaceLeaf} from "obsidian";
 import {BOOK_SPINE_VIEW_TYPE} from "../constants";
 import type BooksPlugin from "../main";
 import {BookModal} from "../modals/bookModal";
@@ -133,12 +129,14 @@ export class BookSpineView extends ItemView {
 		setIcon(baseButton, "layout-grid");
 		baseButton.addEventListener("click", () => void this.openBase(book));
 
-		const exportButton = actionsEl.createEl("button", {
-			cls: "clickable-icon obsidian-books-icon-button",
-			attr: {type: "button", "aria-label": "Compile book for export", title: "Compile book for export"},
-		});
-		setIcon(exportButton, "file-output");
-		exportButton.addEventListener("click", () => void this.exportBook());
+		if (!Platform.isMobileApp) {
+			const exportButton = actionsEl.createEl("button", {
+				cls: "clickable-icon obsidian-books-icon-button",
+				attr: {type: "button", "aria-label": "Compile book for export", title: "Compile book for export"},
+			});
+			setIcon(exportButton, "file-output");
+			exportButton.addEventListener("click", () => void this.exportBook());
+		}
 
 		const editButton = actionsEl.createEl("button", {
 			cls: "clickable-icon obsidian-books-icon-button",
@@ -545,16 +543,17 @@ export class BookSpineView extends ItemView {
 		const book = this.book;
 		try {
 			const content = await this.plugin.bookStore.compileBookMarkdown(book);
-			const result = await dialog.showSaveDialog({
-				title: "Export book",
-				defaultPath: join(homedir(), "Downloads", `${sanitizeFileName(book.manifest.title)}.md`),
-				filters: [{name: "Markdown", extensions: ["md"]}],
-			});
-			if (result.canceled || !result.filePath) {
+			if (Platform.isMobileApp) {
+				new Notice("Book export is desktop-only for now.");
 				return;
 			}
-			writeFileSync(result.filePath, content, "utf8");
-			new Notice(`Exported to ${result.filePath}`);
+			const path = normalizePath(`${book.folderPath}/${sanitizeFileName(book.manifest.title)}_export.md`);
+			if (await this.app.vault.adapter.exists(path)) {
+				await this.app.vault.adapter.write(path, content);
+			} else {
+				await this.app.vault.create(path, content);
+			}
+			new Notice(`Exported to ${path}`);
 		} catch (error) {
 			new Notice(error instanceof Error ? error.message : "Could not export book.");
 		}

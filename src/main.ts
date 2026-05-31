@@ -1,4 +1,4 @@
-import {Notice, Plugin, PluginSettingTab, Setting, type TFile, type WorkspaceLeaf} from "obsidian";
+import {Notice, Platform, Plugin, PluginSettingTab, Setting, type TFile, type WorkspaceLeaf} from "obsidian";
 import {BookModeController} from "./bookModeController";
 import {BookStore} from "./bookStore";
 import {
@@ -119,6 +119,9 @@ export default class BooksPlugin extends Plugin {
 		this.app.workspace.onLayoutReady(() => {
 			// Backfill older books: snippets.json → notes + a Bases card view.
 			void this.bookStore.backfillScratchpads();
+			if (Platform.isMobileApp) {
+				return;
+			}
 			void this.app.workspace.ensureSideLeaf(BOOKS_LIBRARY_VIEW_TYPE, "left", {
 				active: false,
 				reveal: false,
@@ -171,12 +174,18 @@ export default class BooksPlugin extends Plugin {
 
 	// Reveal and focus the scratchpad for a book (spine entry point).
 	async openScratchpad(bookId: string, focus = true): Promise<void> {
-		const leaf = await this.app.workspace.ensureSideLeaf(BOOKS_SCRATCHPAD_VIEW_TYPE, "right", {
-			active: focus,
-			reveal: true,
-		});
+		const leaf = Platform.isMobileApp
+			? this.app.workspace.getLeaf("tab")
+			: await this.app.workspace.ensureSideLeaf(BOOKS_SCRATCHPAD_VIEW_TYPE, "right", {
+				active: focus,
+				reveal: true,
+			});
+		await leaf.setViewState({type: BOOKS_SCRATCHPAD_VIEW_TYPE, active: focus});
 		if (leaf.view instanceof ScratchpadView) {
 			await leaf.view.setBook(bookId);
+		}
+		if (Platform.isMobileApp) {
+			void this.app.workspace.revealLeaf(leaf);
 		}
 	}
 
@@ -220,10 +229,14 @@ export default class BooksPlugin extends Plugin {
 	}
 
 	async openBooksLibrary(): Promise<void> {
-		await this.app.workspace.ensureSideLeaf(BOOKS_LIBRARY_VIEW_TYPE, "left", {
-			active: true,
-			reveal: true,
-		});
+		if (Platform.isMobileApp) {
+			const leaf = this.app.workspace.getLeaf("tab");
+			await leaf.setViewState({type: BOOKS_LIBRARY_VIEW_TYPE, active: true});
+			void this.app.workspace.revealLeaf(leaf);
+			return;
+		}
+
+		await this.app.workspace.ensureSideLeaf(BOOKS_LIBRARY_VIEW_TYPE, "left", {active: true, reveal: true});
 	}
 
 	async openBookSpine(bookId: string): Promise<void> {
@@ -271,6 +284,13 @@ export default class BooksPlugin extends Plugin {
 	}
 
 	async openBooksSidebar(): Promise<void> {
+		if (Platform.isMobileApp) {
+			const leaf = this.app.workspace.getLeaf("tab");
+			await leaf.setViewState({type: BOOKS_SIDEBAR_VIEW_TYPE, active: true});
+			void this.app.workspace.revealLeaf(leaf);
+			return;
+		}
+
 		const leaf = this.app.workspace.getRightLeaf(false);
 		if (!leaf) {
 			new Notice("Could not open the books sidebar.");
