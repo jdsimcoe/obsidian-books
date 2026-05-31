@@ -87,7 +87,7 @@ export default class BooksPlugin extends Plugin {
 		}));
 
 		this.addCommand({
-			id: "open-books-library",
+			id: "open-library",
 			name: "Open library",
 			callback: () => {
 				void this.openBooksLibrary();
@@ -109,7 +109,7 @@ export default class BooksPlugin extends Plugin {
 		});
 
 		this.addCommand({
-			id: "open-books-sidebar",
+			id: "open-research-sidebar",
 			name: "Open research sidebar",
 			callback: () => {
 				void this.openBooksSidebar();
