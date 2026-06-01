@@ -51,6 +51,12 @@ genre: fiction
 
 Filenames are allowed to differ from display titles. The plugin keeps file references stable while presenting readable labels in book views and editor chrome.
 
+## Mobile and Obsidian Sync
+
+Books requires `book.json` to sync between devices because it stores each book's spine, ordering, metadata, sections, chapters, and canvases. If mobile shows the `Books/` folder in Files but the Books navigator says no books were found, check Obsidian Sync's file type settings and enable syncing for all file types.
+
+In Obsidian, open **Settings → Sync → File types** and choose **All file types**. Also make sure the `Books/` folder is included in selective folder sync. After changing Sync settings, let mobile finish syncing, then restart Obsidian or toggle Books off and on.
+
 ## Main views
 
 ### Books navigator
@@ -117,6 +123,7 @@ Books applies manuscript styling only to files inside `Books/`. The manuscript t
 ## Commands
 
 - **Open library**
+- **Open book spine**
 - **Create book**
 - **Create chapter**
 - **Open research sidebar**

@@ -4,7 +4,7 @@ import type BooksPlugin from "../main";
 import {BookModal} from "../modals/bookModal";
 import type {BookEntry, BookPart, BookRecord, CreateBookInput} from "../types";
 import {sanitizeFileName} from "../utils/ids";
-import {flattenEntries, isCanvasEntry, isPart} from "../utils/tree";
+import {flattenEntries, isCanvasEntry, isPart, type InsertTarget} from "../utils/tree";
 
 export interface BookSpineViewState extends Record<string, unknown> {
 	bookId?: string;
@@ -286,6 +286,18 @@ export class BookSpineView extends ItemView {
 		bodyEl.createDiv({cls: "obsidian-books-part-count", text: `${count} chapter${count === 1 ? "" : "s"}`});
 
 		const actionsEl = mainEl.createDiv({cls: "obsidian-books-section-actions"});
+		if (Platform.isMobileApp) {
+			if (this.partMoveBeforeId(part.id, "up") !== undefined) {
+				this.addRowIconButton(actionsEl, "Move section up", "arrow-up", () => {
+					void this.movePartByButton(part.id, "up");
+				});
+			}
+			if (this.partMoveBeforeId(part.id, "down") !== undefined) {
+				this.addRowIconButton(actionsEl, "Move section down", "arrow-down", () => {
+					void this.movePartByButton(part.id, "down");
+				});
+			}
+		}
 		this.addRowIconButton(actionsEl, "Add chapter", "plus", () => {
 			this.plugin.showCreateSectionModal(book, "chapter", part.id);
 		});
@@ -372,6 +384,18 @@ export class BookSpineView extends ItemView {
 		});
 
 		const actionsEl = rowEl.createDiv({cls: "obsidian-books-section-actions"});
+		if (Platform.isMobileApp) {
+			if (this.entryMoveTarget(entry.id, partId, "up")) {
+				this.addRowIconButton(actionsEl, "Move chapter up", "arrow-up", () => {
+					void this.moveEntryByButton(entry.id, partId, "up");
+				});
+			}
+			if (this.entryMoveTarget(entry.id, partId, "down")) {
+				this.addRowIconButton(actionsEl, "Move chapter down", "arrow-down", () => {
+					void this.moveEntryByButton(entry.id, partId, "down");
+				});
+			}
+		}
 		this.addRowIconButton(actionsEl, "Rename", "pencil", () => {
 			void this.renameEntry(entry);
 		});
@@ -461,6 +485,78 @@ export class BookSpineView extends ItemView {
 			await this.render();
 		} catch (error) {
 			new Notice(error instanceof Error ? error.message : "Could not move item.");
+		}
+	}
+
+	private partMoveBeforeId(partId: string, direction: "up" | "down"): string | null | undefined {
+		if (!this.book) {
+			return undefined;
+		}
+
+		const nodes = this.book.manifest.nodes;
+		const index = nodes.findIndex((node) => node.id === partId);
+		if (index === -1) {
+			return undefined;
+		}
+
+		if (direction === "up") {
+			return index > 0 ? nodes[index - 1]?.id : undefined;
+		}
+		return index < nodes.length - 1 ? nodes[index + 2]?.id ?? null : undefined;
+	}
+
+	private entryMoveTarget(entryId: string, partId: string | null, direction: "up" | "down"): InsertTarget | null {
+		if (!this.book) {
+			return null;
+		}
+
+		const list: Array<{id: string}> = partId
+			? this.book.manifest.nodes.find((node): node is BookPart => isPart(node) && node.id === partId)?.children ?? []
+			: this.book.manifest.nodes;
+		const index = list.findIndex((node) => node.id === entryId);
+		if (index === -1) {
+			return null;
+		}
+
+		if (direction === "up") {
+			return index > 0 ? {partId, beforeId: list[index - 1]?.id ?? null} : null;
+		}
+		return index < list.length - 1 ? {partId, beforeId: list[index + 2]?.id ?? null} : null;
+	}
+
+	private async movePartByButton(partId: string, direction: "up" | "down"): Promise<void> {
+		if (!this.book) {
+			return;
+		}
+
+		const beforeId = this.partMoveBeforeId(partId, direction);
+		if (beforeId === undefined) {
+			return;
+		}
+
+		try {
+			this.book = await this.plugin.bookStore.movePart(this.book, partId, beforeId);
+			await this.render();
+		} catch (error) {
+			new Notice(error instanceof Error ? error.message : "Could not move section.");
+		}
+	}
+
+	private async moveEntryByButton(entryId: string, partId: string | null, direction: "up" | "down"): Promise<void> {
+		if (!this.book) {
+			return;
+		}
+
+		const target = this.entryMoveTarget(entryId, partId, direction);
+		if (!target) {
+			return;
+		}
+
+		try {
+			this.book = await this.plugin.bookStore.moveEntry(this.book, entryId, target);
+			await this.render();
+		} catch (error) {
+			new Notice(error instanceof Error ? error.message : "Could not move chapter.");
 		}
 	}
 

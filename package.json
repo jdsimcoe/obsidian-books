@@ -1,6 +1,6 @@
 {
   "name": "obsidian-books",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Obsidian plugin for writing and organizing long-form books.",
   "main": "main.js",
   "type": "module",
