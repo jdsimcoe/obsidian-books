@@ -125,19 +125,23 @@ export default class BooksPlugin extends Plugin {
 		});
 
 		this.app.workspace.onLayoutReady(() => {
-			// Backfill older books: snippets.json → notes + a Bases card view.
-			void this.bookStore.backfillScratchpads();
-			if (Platform.isMobileApp) {
-				return;
-			}
-			void this.app.workspace.ensureSideLeaf(BOOKS_LIBRARY_VIEW_TYPE, "left", {
-				active: false,
-				reveal: false,
-			});
-			void this.app.workspace.ensureSideLeaf(BOOKS_SCRATCHPAD_VIEW_TYPE, "right", {
-				active: false,
-				reveal: false,
-			});
+			void (async () => {
+				this.cleanupDuplicateSideViews();
+				// Backfill older books: snippets.json → notes + a Bases card view.
+				await this.bookStore.backfillScratchpads();
+				if (Platform.isMobileApp) {
+					return;
+				}
+				await this.app.workspace.ensureSideLeaf(BOOKS_LIBRARY_VIEW_TYPE, "left", {
+					active: false,
+					reveal: false,
+				});
+				await this.app.workspace.ensureSideLeaf(BOOKS_SCRATCHPAD_VIEW_TYPE, "right", {
+					active: false,
+					reveal: false,
+				});
+				this.cleanupDuplicateSideViews();
+			})();
 		});
 	}
 
@@ -182,6 +186,9 @@ export default class BooksPlugin extends Plugin {
 
 	// Reveal and focus the scratchpad for a book (spine entry point).
 	async openScratchpad(bookId: string, focus = true): Promise<void> {
+		if (!Platform.isMobileApp) {
+			this.detachDuplicateLeaves(BOOKS_SCRATCHPAD_VIEW_TYPE);
+		}
 		const leaf = Platform.isMobileApp
 			? this.app.workspace.getLeaf("tab")
 			: await this.app.workspace.ensureSideLeaf(BOOKS_SCRATCHPAD_VIEW_TYPE, "right", {
@@ -244,6 +251,7 @@ export default class BooksPlugin extends Plugin {
 			return;
 		}
 
+		this.detachDuplicateLeaves(BOOKS_LIBRARY_VIEW_TYPE);
 		await this.app.workspace.ensureSideLeaf(BOOKS_LIBRARY_VIEW_TYPE, "left", {active: true, reveal: true});
 	}
 
@@ -299,6 +307,7 @@ export default class BooksPlugin extends Plugin {
 			return;
 		}
 
+		this.detachDuplicateLeaves(BOOKS_SIDEBAR_VIEW_TYPE);
 		const leaf = this.app.workspace.getRightLeaf(false);
 		if (!leaf) {
 			new Notice("Could not open the books sidebar.");
@@ -307,6 +316,22 @@ export default class BooksPlugin extends Plugin {
 
 		await leaf.setViewState({type: BOOKS_SIDEBAR_VIEW_TYPE, active: true});
 		void this.app.workspace.revealLeaf(leaf);
+	}
+
+	private cleanupDuplicateSideViews(): void {
+		this.detachDuplicateLeaves(BOOKS_LIBRARY_VIEW_TYPE);
+		this.detachDuplicateLeaves(BOOKS_SCRATCHPAD_VIEW_TYPE);
+		this.detachDuplicateLeaves(BOOKS_SIDEBAR_VIEW_TYPE);
+	}
+
+	private detachDuplicateLeaves(viewType: string): void {
+		const leaves = this.app.workspace.getLeavesOfType(viewType);
+		const keepLeaf = leaves[0];
+		for (const leaf of leaves) {
+			if (leaf !== keepLeaf) {
+				leaf.detach();
+			}
+		}
 	}
 
 	showCreateBookModal(): void {

@@ -1,7 +1,7 @@
 {
   "id": "books",
   "name": "Books",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "minAppVersion": "1.13.0",
   "description": "Write, organize, and assemble long-form books from Markdown files.",
   "author": "jdsimcoe"
